@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ApplyFast - Accelerate cash application in NetSuite by matching invoices and applying payments instantly. Free Chrome extension for NetSuite users.">
+  <title>ApplyFast - NetSuite Cash Application Assistant | Chrome Extension</title>
+  <link rel="icon" type="image/png" href="icons/brand/applyfast-mark.png">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #ffffff;
+    }
+
+    /* Header */
+    header {
+      background: #0F2D4A;
+      color: white;
+      padding: 1rem 0;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    nav {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      position: relative;
+      display: block;
+      width: 160px;
+      height: 44px;
+      overflow: hidden;
+    }
+
+    .logo img {
+      position: absolute;
+      left: -36px;
+      top: -18px;
+      height: 81px;
+      width: auto;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: white;
+      text-decoration: none;
+      font-weight: 500;
+      transition: opacity 0.3s;
+    }
+
+    .nav-links a:hover {
+      opacity: 0.8;
+    }
+
+    /* Hero Section */
+    .hero {
+      background: linear-gradient(135deg, #0F2D4A, #1D6FC4);
+      color: white;
+      padding: 5rem 2rem;
+      text-align: center;
+    }
+
+    .hero-content {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .hero h1 {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      font-weight: 700;
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      margin-bottom: 2rem;
+      opacity: 0.95;
+    }
+
+    .cta-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 1rem 2rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1.1rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: #FFDD00;
+      color: #000;
+      box-shadow: 0 4px 12px rgba(255,221,0,0.4);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(255,221,0,0.5);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border: 2px solid white;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.3);
+      transform: translateY(-2px);
+    }
+
+    /* Features Section */
+    .features {
+      max-width: 1200px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 2.5rem;
+      margin-bottom: 3rem;
+      color: #0F2D4A;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      margin-bottom: 4rem;
+    }
+
+    .feature-card {
+      background: #f8f9fa;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+
+    .feature-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .feature-card h3 {
+      color: #1D6FC4;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+    }
+
+    .feature-card p {
+      color: #666;
+      line-height: 1.8;
+    }
+
+    /* How It Works */
+    .how-it-works {
+      background: #f8f9fa;
+      padding: 4rem 2rem;
+    }
+
+    .how-it-works-content {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 2rem;
+      margin-top: 3rem;
+    }
+
+    .step {
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .step-number {
+      display: inline-block;
+      width: 60px;
+      height: 60px;
+      background: linear-gradient(135deg, #0F2D4A, #1D6FC4);
+      color: white;
+      border-radius: 50%;
+      line-height: 60px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+
+    .step h3 {
+      color: #1D6FC4;
+      margin-bottom: 1rem;
+    }
+
+    .step p {
+      color: #666;
+    }
+
+    /* Screenshots */
+    .screenshots {
+      max-width: 1400px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+    }
+
+    .screenshot-carousel {
+      position: relative;
+      margin-top: 3rem;
+      overflow: hidden;
+    }
+
+    .screenshot-track {
+      display: flex;
+      gap: 1.5rem;
+      transition: transform 0.5s ease;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: thin;
+      padding-bottom: 1rem;
+    }
+
+    .screenshot-track::-webkit-scrollbar {
+      height: 8px;
+    }
+
+    .screenshot-track::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+
+    .screenshot-track::-webkit-scrollbar-thumb {
+      background: #1D6FC4;
+      border-radius: 4px;
+    }
+
+    .screenshot-item {
+      flex: 0 0 calc(25% - 1.125rem);
+      min-width: 280px;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      transition: transform 0.3s, box-shadow 0.3s;
+      cursor: pointer;
+      scroll-snap-align: start;
+    }
+
+    .screenshot-item:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+
+    .screenshot-item img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Modal for zoomed image */
+    .screenshot-modal {
+      display: none;
+      position: fixed;
+      z-index: 10000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.9);
+      cursor: zoom-out;
+    }
+
+    .screenshot-modal.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .screenshot-modal img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    .screenshot-nav {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .screenshot-nav-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ccc;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.3s;
+    }
+
+    .screenshot-nav-btn.active {
+      background: #1D6FC4;
+      transform: scale(1.2);
+    }
+
+    .screenshot-nav-btn:hover {
+      background: #0F2D4A;
+    }
+
+    /* Installation */
+    .installation {
+      background: linear-gradient(135deg, #0F2D4A, #1D6FC4);
+      color: white;
+      padding: 4rem 2rem;
+      text-align: center;
+    }
+
+    .installation-content {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .installation h2 {
+      font-size: 2.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .installation-steps {
+      text-align: left;
+      max-width: 600px;
+      margin: 2rem auto;
+      background: rgba(255,255,255,0.1);
+      padding: 2rem;
+      border-radius: 12px;
+    }
+
+    .installation-steps ol {
+      padding-left: 1.5rem;
+    }
+
+    .installation-steps li {
+      margin-bottom: 1rem;
+      line-height: 1.8;
+    }
+
+    /* Footer */
+    footer {
+      background: #0F2D4A;
+      color: white;
+      padding: 3rem 2rem;
+      text-align: center;
+    }
+
+    .footer-content {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .footer-links a {
+      color: white;
+      text-decoration: none;
+      transition: opacity 0.3s;
+    }
+
+    .footer-links a:hover {
+      opacity: 0.8;
+    }
+
+    .support-section {
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(255,255,255,0.2);
+    }
+
+    /* Guide Section */
+    .guide {
+      max-width: 1200px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+    }
+
+    .guide-content {
+      background: #f8f9fa;
+      padding: 2rem;
+      border-radius: 12px;
+      margin-top: 2rem;
+    }
+
+    .guide-content h3 {
+      color: #1D6FC4;
+      margin-bottom: 1rem;
+      margin-top: 2rem;
+    }
+
+    .guide-content h3:first-child {
+      margin-top: 0;
+    }
+
+    .guide-content ul, .guide-content ol {
+      margin-left: 1.5rem;
+      margin-bottom: 1.5rem;
+      color: #666;
+      line-height: 1.8;
+    }
+
+    .guide-content code {
+      background: #e8e8e8;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 0.9em;
+      color: #d63384;
+    }
+
+    .guide-content .example-box {
+      background: #fff;
+      border-left: 4px solid #1D6FC4;
+      padding: 1rem;
+      margin: 1rem 0;
+      border-radius: 4px;
+    }
+
+    /* Limitations Section */
+    .limitations {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 2rem;
+      border-radius: 12px;
+      margin: 4rem auto;
+      max-width: 1200px;
+    }
+
+    .limitations h2 {
+      color: #856404;
+      margin-bottom: 1.5rem;
+    }
+
+    .limitations ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .limitations li {
+      padding: 0.75rem 0;
+      padding-left: 2rem;
+      position: relative;
+      color: #856404;
+      line-height: 1.8;
+    }
+
+    .limitations li:before {
+      content: "⚠️";
+      position: absolute;
+      left: 0;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero h1 {
+        font-size: 2rem;
+      }
+
+      .hero p {
+        font-size: 1rem;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .cta-buttons {
+        flex-direction: column;
+      }
+
+      .btn {
+        width: 100%;
+      }
+
+      .screenshot-item {
+        flex: 0 0 calc(50% - 0.75rem);
+        min-width: 240px;
+      }
+
+      .screenshot-track {
+        gap: 1rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .screenshot-item {
+        flex: 0 0 85%;
+        min-width: 200px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <nav>
+      <div class="logo">
+        <img src="icons/brand/applyfast-logo-reversed.png" alt="ApplyFast, Cash Application Assistant">
+      </div>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#guide">Guide</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="#screenshots">Screenshots</a></li>
+        <li><a href="#install">Install</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1>ApplyFast</h1>
+      <p>Accelerate your NetSuite cash application workflow by matching invoices and applying payments instantly.</p>
+      <div class="cta-buttons">
+        <a href="#install" class="btn btn-primary">Install Extension</a>
+        <a href="https://buymeacoffee.com/jerald23siv" target="_blank" class="btn btn-secondary" style="background: #FFDD00; color: #000; border: 2px solid #FFDD00; font-weight: 700; box-shadow: 0 4px 16px rgba(255,221,0,0.5);">☕ Support Development - Buy Me A Coffee! ☕</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <h2 class="section-title">Powerful Features</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🔍</div>
+        <h3>Preview Before Apply</h3>
+        <p>See exactly which rows will be applied, and with what amounts, before anything changes. Nothing is written until you click Apply. No more manual searching through long lists.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📋</div>
+        <h3>Excel Integration</h3>
+        <p>Copy and paste Excel data - supports 2 columns (Invoice | Amount) or 3 columns (Invoice | Discount | Amount). Automatically formats to the correct syntax.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💰</div>
+        <h3>Partial Payments & Discounts</h3>
+        <p>Handle partial payments with <code>INV12345=100.00</code> or include discounts with <code>INV12345|10.00|100.00</code> format. Fills the "Disc. Taken" field in NetSuite when it is editable.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📑</div>
+        <h3>All Pages</h3>
+        <p>When your open transactions span several NetSuite pages, ApplyFast scans every page, previews all of them together and applies across pages for you.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎯</div>
+        <h3>Safe Matching</h3>
+        <p>Matches Ref No., PO and other sublist columns exactly. Invalid amounts, duplicate lines and partial or ambiguous matches are skipped and reported, never guessed.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>Secure & Private</h3>
+        <p>All processing happens locally in your browser. No data is sent to external servers.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="how-it-works-content">
+      <h2 class="section-title" style="color: #0F2D4A;">How It Works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Paste References</h3>
+          <p>On NetSuite's Accept Customer Payment screen, paste your invoice list (or Excel columns) into ApplyFast.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Review Cash Application</h3>
+          <p>Click Review Cash Application. ApplyFast reads the rows and shows what it would apply. Nothing changes in NetSuite yet.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Review Statuses</h3>
+          <p>Check the status of every line. Skipped, Held or protected rows are explained, not guessed.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <h3>Apply</h3>
+          <p>Click Apply N Payments. ApplyFast ticks Apply and fills Payment (and Disc. Taken) for the rows marked Ready or Overwrite.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">5</div>
+          <h3>Save in NetSuite</h3>
+          <p>Review the totals and click Save in NetSuite yourself. ApplyFast never saves.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Screenshots -->
+  <section class="screenshots" id="screenshots">
+    <h2 class="section-title">See It In Action</h2>
+    <div class="screenshot-carousel">
+      <div class="screenshot-track" id="screenshotTrack">
+        <div class="screenshot-item" data-index="0">
+          <img src="images/Screenshot%201.png" alt="ApplyFast in NetSuite - Main Interface" onerror="this.style.display='none'">
+        </div>
+        <div class="screenshot-item" data-index="1">
+          <img src="images/Screenshot%202.png" alt="ApplyFast - Matching Invoices" onerror="this.style.display='none'">
+        </div>
+        <div class="screenshot-item" data-index="2">
+          <img src="images/Screenshot%203.png" alt="ApplyFast - Results" onerror="this.style.display='none'">
+        </div>
+        <div class="screenshot-item" data-index="3">
+          <img src="images/Screenshot%204.png" alt="ApplyFast - Discount Feature" onerror="this.style.display='none'">
+        </div>
+      </div>
+      <div class="screenshot-nav" id="screenshotNav"></div>
+    </div>
+    <p style="text-align: center; margin-top: 1rem; color: #666; font-size: 0.95rem;">These screenshots show ApplyFast 1.5. In 1.6 the "Match Lines" button is replaced by <strong>Review Cash Application</strong> and <strong>Apply N Payments</strong>, as described in the guide below.</p>
+    <!-- Modal for zoomed images -->
+    <div class="screenshot-modal" id="screenshotModal">
+      <img id="modalImage" src="" alt="Zoomed Screenshot">
+    </div>
+  </section>
+
+  <!-- Guide Section -->
+  <section class="guide" id="guide">
+    <h2 class="section-title">Usage Guide</h2>
+    <div class="guide-content">
+      <h3>Getting Started</h3>
+      <ol>
+        <li>Install ApplyFast from the Chrome Web Store</li>
+        <li>Navigate to NetSuite's <strong>Accept Customer Payment</strong> screen</li>
+        <li>The ApplyFast button appears on the right side of the screen; click it to open the workspace</li>
+        <li>Click Minimize (–) to hide the workspace; the ApplyFast button stays, and clicking it reopens the workspace exactly as you left it</li>
+      </ol>
+
+      <h3>Basic Usage</h3>
+      <p>Paste invoice references (one per line) into the text area. A reference without an amount is previewed for its remaining open balance (Amt. Due). Nothing is applied until you review the Preview and click Apply.</p>
+      <div class="example-box">
+        <strong>Example:</strong><br>
+        <code>INV12345</code><br>
+        <code>PO67890</code><br>
+        <code>REF123</code>
+      </div>
+
+      <h3>Partial Payments</h3>
+      <p>To apply a partial payment, use the format: <code>INV12345=100.00</code> where the amount is in US format (comma for thousands, dot for decimal). Accepted amounts look like <code>1000</code>, <code>1000.00</code>, <code>1,000</code> or <code>1,000.00</code> and must be greater than zero. A line with an invalid amount is skipped and reported; it is never applied for the full balance instead.</p>
+      <div class="example-box">
+        <strong>Example:</strong><br>
+        <code>INV12345=439.26</code><br>
+        <code>PO67890=1,234.56</code><br>
+        <code>REF123=100.00</code>
+      </div>
+
+      <h3>Payments with Discounts</h3>
+      <p>To apply a payment with a discount, use the format: <code>INV12345|10.00|100.00</code> (reference | discount | payment). The payment amount is required. If the row's "Disc. Taken" field cannot be found or is not editable, the line is not applied.</p>
+
+      <h3>Excel Integration</h3>
+      <p>You can copy and paste data directly from Excel - the extension automatically detects the format:</p>
+      <ul>
+        <li><strong>Two columns:</strong> Invoice Reference | Payment Amount - automatically formats to <code>INV123=100.00</code></li>
+        <li><strong>Three columns:</strong> Invoice Reference | Discount Amount | Payment Amount - automatically formats to <code>INV123|10.00|100.00</code> and populates both discount and payment fields</li>
+      </ul>
+      <div class="example-box">
+        <strong>Excel Format (Two Columns):</strong><br>
+        INV12345&nbsp;&nbsp;&nbsp;&nbsp;100.00<br>
+        PO67890&nbsp;&nbsp;&nbsp;&nbsp;439.26<br><br>
+        <strong>Excel Format (Three Columns with Discount):</strong><br>
+        INV12345&nbsp;&nbsp;&nbsp;&nbsp;10.00&nbsp;&nbsp;&nbsp;&nbsp;100.00<br>
+        PO67890&nbsp;&nbsp;&nbsp;&nbsp;5.00&nbsp;&nbsp;&nbsp;&nbsp;439.26<br><br>
+        <em>When you paste 3-column data, ApplyFast automatically fills both the "Disc. Taken" and payment amount fields in NetSuite.</em>
+      </div>
+
+      <h3>How Matching Works</h3>
+      <ul>
+        <li>Each reference is matched against the <strong>Ref No.</strong> first, then the <strong>PO</strong>, then other sublist columns (whole values only).</li>
+        <li>A reference that only partially matches a row is skipped. Use the exact Ref No.</li>
+        <li>A line with an amount or a discount must match exactly one row.</li>
+        <li>An Invoice reference that matches more than one row is skipped as <em>Multiple matches</em>.</li>
+        <li>A line without an amount that matches several non-Invoice rows (for example journals) is applied to all of them, each at its own Amt. Due. If any of those rows cannot be applied, none of them are.</li>
+        <li>A reference that appears on more than one line, or two lines that point to the same row, are skipped as duplicates.</li>
+        <li>Only the <strong>Invoices</strong> subtab is read. Credits are never applied.</li>
+      </ul>
+
+      <h3>Choose a Mode</h3>
+      <ul>
+        <li><strong>This page only</strong> - Preview and Apply use the rows currently loaded on the Invoices subtab. This is the quickest option when all the open transactions you need are on the page shown.</li>
+        <li><strong>All pages</strong> - For lists that NetSuite splits across several pages. ApplyFast scans every page first, then previews and applies across all scanned pages.</li>
+      </ul>
+
+      <h3>Preview and Apply (This page only)</h3>
+      <ol>
+        <li>Paste your lines and click <strong>Review Cash Application</strong>. ApplyFast reads the rows once and shows a table with the Line, Ref No., Amt. Due, current and new Payment/Discount, and a status for every row. Nothing in NetSuite changes.</li>
+        <li>Review the summary and the statuses. Rows that already have a different Payment or Discount are protected; tick <strong>overwrite</strong> on a row, or <strong>Overwrite all</strong>, only if you want to replace those values.</li>
+        <li>Click <strong>Apply N Payments</strong>. ApplyFast rechecks every row just before writing; rows that changed since Preview are not written. Large lists are applied in chunks, and <strong>Stop</strong> stops after the current chunk.</li>
+        <li>Review the results (Applied, Adjusted by NetSuite, Not applied), check the totals, then click <strong>Save</strong> in NetSuite yourself.</li>
+      </ol>
+      <p>If you edit the pasted lines, or the customer, page or rows change after Preview, the Preview is cleared and nothing is changed. Click Review Cash Application again.</p>
+
+      <h3>Preview and Apply (All pages)</h3>
+      <ol>
+        <li>Select <strong>All pages</strong> and click <strong>Scan All Pages</strong>. ApplyFast switches the NetSuite range to each page, reads it once NetSuite has finished loading it, then returns to the page you started on. Scanning only reads: it never changes Payment, Disc. Taken or Apply and never saves. You can stop the scan at any time.</li>
+        <li>When every page shows <em>Scanned</em>, paste your lines and click <strong>Review Cash Application</strong>. It is not available until the scan is complete.</li>
+        <li>Review the statuses for each page, including any <em>Held</em>, <em>Multiple matches</em> and <em>Not found</em> lines.</li>
+        <li>Click <strong>Apply N Payments on K Pages</strong>. ApplyFast switches to each page that has rows to write, rechecks the page and every row, writes the approved rows and reads the values back. Please do not edit the NetSuite page while Apply is running; changing the range, editing the Invoices list or using the customer field halts the run.</li>
+        <li>A red <strong>Stop</strong> button is available throughout Apply. Stop takes effect at the next safe point, never in the middle of a row.</li>
+        <li>After a successful run, ApplyFast returns to the page you started on and shows the results for every page. Check the totals, then click <strong>Save</strong> in NetSuite yourself.</li>
+      </ol>
+      <p>Any Apply uses up the scan and the Preview. For the next batch, click Rescan All Pages, then Review Cash Application again.</p>
+
+      <h3>Status Glossary</h3>
+      <p><strong>Preview statuses</strong></p>
+      <ul>
+        <li><strong>Ready</strong> - Will be written when you click Apply.</li>
+        <li><strong>Overwrite</strong> - Will replace the row's existing Payment or Discount because you ticked overwrite.</li>
+        <li><strong>Already applied</strong> - The row already holds exactly these values, so it is not written again.</li>
+        <li><strong>Has Payment</strong> - The row already has a different Payment. Not written unless you tick overwrite.</li>
+        <li><strong>Has Discount</strong> - The row already has a different Disc. Taken. If your line includes a discount you can tick overwrite; if it does not, clear the discount in NetSuite and click Review Cash Application again (ApplyFast never clears a discount).</li>
+        <li><strong>Inconsistent</strong> - Apply and Payment disagree on the row (for example values entered but Apply not ticked). Never written; fix the row in NetSuite.</li>
+        <li><strong>Unreadable</strong> - A current value on the row is not a US-format amount. Never written.</li>
+        <li><strong>Changed since Preview</strong> - The row changed after Preview. Not written; click Review Cash Application again.</li>
+        <li><strong>Skipped</strong> - The line was not applied. The reason is shown, for example: not found, only partially matches, multiple matches, duplicate line, invalid amount, Amt. Due is 0.00, or Disc. Taken not editable.</li>
+        <li><strong>Held</strong> (All pages) - A reference without an amount matches several non-Invoice rows on different pages. It is held because pages are applied one at a time and these rows must be applied all together or not at all.</li>
+      </ul>
+      <p><strong>Results after an All pages Apply</strong></p>
+      <ul>
+        <li><strong>Applied</strong> - Written and confirmed by reading the row back.</li>
+        <li><strong>Adjusted</strong> - Written, but NetSuite shows a different Payment or Disc. Taken (the value is shown). Check the row.</li>
+        <li><strong>Not confirmed</strong> - Written, but the result could not be verified (row not found again, values unreadable, or Apply not ticked). Check the row in NetSuite.</li>
+        <li><strong>Changed since Preview</strong> - The row changed before it was written. Not written.</li>
+        <li><strong>Row moved</strong> - A different transaction is now at that position. Not written.</li>
+        <li><strong>Not written</strong> - Apply was stopped or halted before this row, or the row could not be written.</li>
+        <li><strong>Blocked</strong> - Matched, but not written because of its state at Preview (for example Has Payment without overwrite, Has Discount, Inconsistent or Unreadable).</li>
+        <li><strong>Already applied</strong>, <strong>Held</strong>, <strong>Skipped</strong> - As in Preview; not written.</li>
+        <li><strong>Error while writing</strong> - Something failed while writing this row. Check it in NetSuite.</li>
+      </ul>
+      <p>With <strong>This page only</strong>, results are grouped as <em>Applied</em>, <em>Adjusted by NetSuite</em> and <em>Not applied</em> (with the reason for each line). During an All pages scan, each page shows <em>Scanned</em>, <em>Not scanned</em> or <em>Scan again</em>.</p>
+
+      <h3>Best Practices</h3>
+      <ul>
+        <li>Prepare your reference and amount data in a spreadsheet before pasting</li>
+        <li>Use exact Ref No. values to avoid partial or multiple matches</li>
+        <li>Review every status in the Preview before clicking Apply</li>
+        <li>Do not edit the NetSuite page while a scan or Apply is running</li>
+        <li>Check the totals and the applied rows before saving the payment in NetSuite</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- FAQ Section -->
+  <section class="guide" id="faq">
+    <h2 class="section-title">FAQ</h2>
+    <div class="guide-content">
+      <h3>Does ApplyFast save the NetSuite transaction?</h3>
+      <p>No. ApplyFast only ticks Apply and fills Payment and Disc. Taken on the Invoices subtab. It never clicks Save. Review the payment and save it in NetSuite yourself.</p>
+
+      <h3>Does ApplyFast send my data anywhere?</h3>
+      <p>No. All processing happens locally in your browser. Invoice numbers, amounts and customer information are not sent to any external server.</p>
+
+      <h3>What happens if a reference is ambiguous?</h3>
+      <p>It is skipped, not guessed. A partial match, an Invoice reference that matches more than one row, or a line with an amount that matches more than one row is reported in the Preview with the reason. Use the exact Ref No. and click Review Cash Application again.</p>
+
+      <h3>What happens if Payment is already populated?</h3>
+      <p>The row is shown as <em>Has Payment</em> and is not changed unless you tick <strong>overwrite</strong> for that row (or <strong>Overwrite all</strong>). If it already holds exactly the planned values, it is shown as <em>Already applied</em> and left as is.</p>
+
+      <h3>What is the difference between This page only and All pages?</h3>
+      <p><strong>This page only</strong> previews and applies the rows currently loaded in NetSuite. <strong>All pages</strong> first scans every page of the Invoices list, then previews and applies across all scanned pages, switching pages for you and returning to your starting page after a successful run.</p>
+
+      <h3>What happens if something changes after Preview?</h3>
+      <p>ApplyFast rechecks the page and every row right before writing. If the pasted lines, customer or page changed, the Preview is cleared and nothing is changed. If a single row changed, that row is not written and is reported as <em>Changed since Preview</em>.</p>
+
+      <h3>Can I stop an Apply?</h3>
+      <p>Yes. Click <strong>Stop</strong> while Apply is running. It takes effect at the next safe point (after the current chunk of rows, or between pages), never in the middle of a row. Rows already written stay written; the results list the rows that were not written.</p>
+
+      <h3>Why are some lines Held or Blocked?</h3>
+      <p><em>Held</em> lines match several non-Invoice rows spread over more than one page; they must be applied all together, which a page-by-page Apply cannot guarantee. <em>Blocked</em> rows matched but were not safe to write because of their state at Preview, such as an existing Payment you did not choose to overwrite, an existing discount, or inconsistent values. The reason is shown next to each line.</p>
+    </div>
+  </section>
+
+  <!-- Limitations Section -->
+  <section class="limitations" id="limitations">
+    <h2>Current Limitations</h2>
+    <ul>
+      <li><strong>US Number Format Only:</strong> Amounts must use US number format (comma for thousands, dot for decimal). Lines with other formats are skipped as invalid.</li>
+      <li><strong>Credits Are Not Applied:</strong> Only the Invoices subtab is read. Credits must still be applied manually.</li>
+      <li><strong>Ambiguous Matches Are Skipped:</strong> Partial matches, Invoice references that match more than one row, and lines with an amount that match more than one row are skipped rather than guessed.</li>
+      <li><strong>Rows Spread Across Pages May Be Held:</strong> In All pages mode, a reference without an amount whose matching non-Invoice rows are on different pages is held, and an Invoice reference found on more than one row is skipped. Apply these by hand or with a more specific reference.</li>
+      <li><strong>All Pages Needs a Complete Scan:</strong> Review Cash Application (All pages) is only available after every page has been scanned. After any Apply, the scan and Preview are used up; the next batch needs a new scan and review.</li>
+      <li><strong>20-Page Limit:</strong> The automatic scan covers up to 20 pages, and one Apply can write to rows on up to 20 pages. Split larger batches.</li>
+      <li><strong>Page Loading Timeout:</strong> If a NetSuite page does not finish loading within 15 seconds during a scan or Apply, the operation stops. Rows already written stay written and are listed in the results.</li>
+      <li><strong>Stop Is Not Instant:</strong> Stop takes effect at the next safe point (after the current chunk of rows, or between pages) rather than interrupting a row write.</li>
+      <li><strong>Discount Field Detection:</strong> Discount support works by automatically detecting the "Disc. Taken" field. In rare cases with heavily customized NetSuite forms, manual verification may be needed.</li>
+      <li><strong>Limited Testing:</strong> Tested in a limited number of NetSuite environments. Behavior may vary depending on your NetSuite configuration and customizations.</li>
+      <li><strong>Not Full Automation:</strong> ApplyFast is a lightweight productivity tool designed to speed up manual cash application. It is not a full AR automation system.</li>
+    </ul>
+    <p style="margin-top: 1.5rem; color: #856404; font-style: italic;">Several of these are deliberate safety choices. Your feedback helps prioritize improvements!</p>
+  </section>
+
+  <!-- Installation -->
+  <section class="installation" id="install">
+    <div class="installation-content">
+      <h2>Install ApplyFast</h2>
+      <p style="font-size: 1.2rem; margin-bottom: 2rem;">Get started in just a few simple steps</p>
+      <div class="installation-steps">
+        <ol>
+          <li>Click the <strong>"Install from Chrome Web Store"</strong> button below</li>
+          <li>Click <strong>"Add to Chrome"</strong> in the Chrome Web Store</li>
+          <li>Confirm the installation when prompted</li>
+          <li>Navigate to NetSuite's <strong>Accept Customer Payment</strong> screen</li>
+          <li>The ApplyFast interface will automatically appear on the right side!</li>
+        </ol>
+      </div>
+      <div style="margin-top: 2rem;">
+        <a href="https://chromewebstore.google.com/detail/applyfast-%E2%80%93-netsuite-cash/ohalkkngickdnobmmlnhnikpmnogcghm" target="_blank" class="btn btn-primary" style="background: white; color: #0F2D4A; font-size: 1.2rem; padding: 1.2rem 2.5rem;">Install from Chrome Web Store</a>
+      </div>
+      <p style="margin-top: 1.5rem; font-size: 0.95rem; opacity: 0.95; font-weight: 500;">✅ <strong>Yes, confirmed:</strong> The Chrome Web Store link will remain the same even when you update the extension package. Your users will always get the latest version automatically!</p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-content">
+      <div class="footer-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#guide">Guide</a>
+        <a href="#faq">FAQ</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="https://chromewebstore.google.com/detail/applyfast-%E2%80%93-netsuite-cash/ohalkkngickdnobmmlnhnikpmnogcghm" target="_blank">Chrome Web Store</a>
+        <a href="https://buymeacoffee.com/jerald23siv" target="_blank">Support</a>
+      </div>
+      <div class="support-section">
+        <div style="background: rgba(255,221,0,0.15); padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem; border: 2px solid rgba(255,221,0,0.3);">
+          <p style="margin-bottom: 1rem; font-size: 1.1rem; font-weight: 600;">💝 Love ApplyFast? Support Future Development!</p>
+          <p style="margin-bottom: 1.5rem; opacity: 0.95;">Your support helps make ApplyFast better for everyone. Every contribution, big or small, is deeply appreciated! 🙏</p>
+          <a href="https://buymeacoffee.com/jerald23siv" target="_blank" style="display: inline-block; padding: 14px 28px; background: #FFDD00; color: #000; text-align: center; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 1.1rem; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 16px rgba(255,221,0,0.5);" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(255,221,0,0.6)';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 16px rgba(255,221,0,0.5)';">☕ Buy Me A Coffee - Support ApplyFast! ☕</a>
+        </div>
+        <p style="margin-bottom: 1rem;">Made with ⚡ for NetSuite users</p>
+        <p style="opacity: 0.8; font-size: 0.9rem;">© 2026 ApplyFast. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Screenshot carousel functionality
+    (function() {
+      const track = document.getElementById('screenshotTrack');
+      const items = track.querySelectorAll('.screenshot-item');
+      const modal = document.getElementById('screenshotModal');
+      const modalImage = document.getElementById('modalImage');
+      const nav = document.getElementById('screenshotNav');
+      
+      // Create navigation dots
+      items.forEach((item, index) => {
+        const dot = document.createElement('button');
+        dot.className = 'screenshot-nav-btn' + (index === 0 ? ' active' : '');
+        dot.setAttribute('aria-label', `Go to screenshot ${index + 1}`);
+        dot.addEventListener('click', () => {
+          scrollToImage(index);
+        });
+        nav.appendChild(dot);
+      });
+      
+      // Update active dot on scroll
+      track.addEventListener('scroll', () => {
+        const scrollLeft = track.scrollLeft;
+        const itemWidth = items[0].offsetWidth + 24; // width + gap
+        const currentIndex = Math.round(scrollLeft / itemWidth);
+        
+        nav.querySelectorAll('.screenshot-nav-btn').forEach((dot, index) => {
+          dot.classList.toggle('active', index === currentIndex);
+        });
+      });
+      
+      // Click to zoom functionality
+      items.forEach((item, index) => {
+        const img = item.querySelector('img');
+        if (img) {
+          item.addEventListener('click', () => {
+            modalImage.src = img.src;
+            modalImage.alt = img.alt;
+            modal.classList.add('active');
+          });
+        }
+      });
+      
+      // Close modal on click
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal || e.target === modalImage) {
+          modal.classList.remove('active');
+        }
+      });
+      
+      // Close modal on Escape key
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+          modal.classList.remove('active');
+        }
+      });
+      
+      // Scroll to specific image
+      function scrollToImage(index) {
+        const item = items[index];
+        if (item) {
+          item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      }
+      
+      // Touch/swipe support for mobile
+      let startX = 0;
+      let scrollLeft = 0;
+      let isDown = false;
+      
+      track.addEventListener('mousedown', (e) => {
+        isDown = true;
+        startX = e.pageX - track.offsetLeft;
+        scrollLeft = track.scrollLeft;
+        track.style.cursor = 'grabbing';
+      });
+      
+      track.addEventListener('mouseleave', () => {
+        isDown = false;
+        track.style.cursor = 'grab';
+      });
+      
+      track.addEventListener('mouseup', () => {
+        isDown = false;
+        track.style.cursor = 'grab';
+      });
+      
+      track.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - track.offsetLeft;
+        const walk = (x - startX) * 2;
+        track.scrollLeft = scrollLeft - walk;
+      });
+      
+      // Set cursor style
+      track.style.cursor = 'grab';
+    })();
+  </script>
+</body>
+</html>
