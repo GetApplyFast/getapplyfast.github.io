@@ -527,6 +527,39 @@
       overflow: hidden;
     }
 
+    .screenshot-arrow {
+      position: absolute;
+      top: calc(50% - 1.75rem);
+      transform: translateY(-50%);
+      z-index: 2;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(15,45,74,0.88);
+      color: #fff;
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 6px 18px rgba(15,45,74,0.3);
+      transition: background 0.2s, opacity 0.2s, transform 0.2s;
+    }
+
+    .screenshot-arrow:hover:not(:disabled) {
+      background: #1D6FC4;
+      transform: translateY(-50%) scale(1.08);
+    }
+
+    .screenshot-arrow:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+
+    .screenshot-arrow.prev { left: 0.75rem; }
+    .screenshot-arrow.next { right: 0.75rem; }
+
     .screenshot-track {
       display: flex;
       gap: 1.5rem;
@@ -1110,6 +1143,8 @@
   <section class="screenshots" id="screenshots">
     <h2 class="section-title">See It In Action</h2>
     <div class="screenshot-carousel">
+      <button type="button" class="screenshot-arrow prev" id="screenshotPrev" aria-label="Previous screenshot">&#8249;</button>
+      <button type="button" class="screenshot-arrow next" id="screenshotNext" aria-label="Next screenshot">&#8250;</button>
       <div class="screenshot-track" id="screenshotTrack">
         <figure class="screenshot-item" data-index="0">
           <img src="images/applyfast-preview.png" alt="ApplyFast Cash Application Preview with Ready and Skipped lines" loading="lazy">
@@ -1422,6 +1457,21 @@
         nav.appendChild(dot);
       });
       
+      const prevBtn = document.getElementById('screenshotPrev');
+      const nextBtn = document.getElementById('screenshotNext');
+      const step = () => items[0].offsetWidth + 24;
+      const updateArrows = () => {
+        const max = track.scrollWidth - track.clientWidth - 4;
+        prevBtn.disabled = track.scrollLeft <= 4;
+        nextBtn.disabled = track.scrollLeft >= max;
+      };
+      prevBtn.addEventListener('click', () => track.scrollBy({ left: -step(), behavior: 'smooth' }));
+      nextBtn.addEventListener('click', () => track.scrollBy({ left: step(), behavior: 'smooth' }));
+      track.addEventListener('scroll', updateArrows);
+      window.addEventListener('resize', updateArrows);
+      window.addEventListener('load', updateArrows);
+      updateArrows();
+
       // Update active dot on scroll
       track.addEventListener('scroll', () => {
         const scrollLeft = track.scrollLeft;
