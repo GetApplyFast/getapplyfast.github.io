@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="ApplyFast - Accelerate cash application in NetSuite by matching invoices and applying payments instantly. Free Chrome extension for NetSuite users.">
+  <meta name="description" content="ApplyFast - Accelerate cash application in NetSuite by matching invoices and applying payments instantly. Current-page cash application is free, including partial payments, discounts and Excel copy/paste. Upgrade for multi-page cash application.">
   <title>ApplyFast - NetSuite Cash Application Assistant | Chrome Extension</title>
   <link rel="icon" type="image/png" href="icons/brand/applyfast-mark.png">
   <style>
@@ -187,6 +187,57 @@
     .feature-card p {
       color: #666;
       line-height: 1.8;
+    }
+
+    /* Pricing */
+    .pricing-intro {
+      text-align: center;
+      max-width: 760px;
+      margin: -2rem auto 2.5rem;
+      color: #666;
+      font-size: 1.1rem;
+    }
+
+    .plan-badge {
+      display: inline-block;
+      margin-left: 0.5rem;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      vertical-align: middle;
+      background: #D1FAE5;
+      color: #047857;
+    }
+
+    .plan-badge.licensed {
+      background: #E8F4FF;
+      color: #1D6FC4;
+    }
+
+    .plan-list {
+      margin-left: 1.25rem;
+      color: #666;
+      line-height: 1.9;
+    }
+
+    .price {
+      font-size: 2.25rem;
+      font-weight: 700;
+      color: #0F2D4A;
+      margin-bottom: 0.25rem;
+    }
+
+    .price span {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #666;
+    }
+
+    .pricing-note {
+      text-align: center;
+      color: #666;
+      font-size: 0.95rem;
     }
 
     /* How It Works */
@@ -548,6 +599,7 @@
       </div>
       <ul class="nav-links">
         <li><a href="#features">Features</a></li>
+        <li><a href="#pricing">Pricing</a></li>
         <li><a href="#how-it-works">How It Works</a></li>
         <li><a href="#guide">Guide</a></li>
         <li><a href="#faq">FAQ</a></li>
@@ -562,8 +614,9 @@
     <div class="hero-content">
       <h1>ApplyFast</h1>
       <p>Accelerate your NetSuite cash application workflow by matching invoices and applying payments instantly.</p>
+      <p style="margin-top: -1rem;"><strong>Start free. Upgrade when you need multi-page automation.</strong></p>
       <div class="cta-buttons">
-        <a href="#install" class="btn btn-primary">Install Extension</a>
+        <a href="#install" class="btn btn-primary">Install Free</a>
         <a href="https://buymeacoffee.com/jerald23siv" target="_blank" class="btn btn-secondary" style="background: #FFDD00; color: #000; border: 2px solid #FFDD00; font-weight: 700; box-shadow: 0 4px 16px rgba(255,221,0,0.5);">☕ Support Development - Buy Me A Coffee! ☕</a>
       </div>
     </div>
@@ -590,8 +643,8 @@
       </div>
       <div class="feature-card">
         <div class="feature-icon">📑</div>
-        <h3>All Pages</h3>
-        <p>When your open transactions span several NetSuite pages, ApplyFast scans every page, previews all of them together and applies across pages for you.</p>
+        <h3>All Pages <span class="plan-badge licensed">License</span></h3>
+        <p>When your open transactions span several NetSuite pages, ApplyFast scans every page, previews all of them together and applies across pages for you. Multi-page cash application is included with an ApplyFast license.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">🎯</div>
@@ -601,9 +654,51 @@
       <div class="feature-card">
         <div class="feature-icon">🔒</div>
         <h3>Secure & Private</h3>
-        <p>All processing happens locally in your browser. No data is sent to external servers.</p>
+        <p>All cash application processing happens locally in your browser. Your invoice numbers, amounts and customer information are never sent to external servers.</p>
       </div>
     </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="features" id="pricing">
+    <h2 class="section-title">Unlock Multi-Page Cash Application</h2>
+    <p class="pricing-intro">Current-page cash application is free. Upgrade when you need to scan, review, and apply across multiple NetSuite pages.</p>
+    <div class="features-grid" style="margin-bottom: 2rem;">
+      <div class="feature-card">
+        <h3>Current Page <span class="plan-badge">Free</span></h3>
+        <ul class="plan-list">
+          <li>Review and match invoices</li>
+          <li>Apply payments</li>
+          <li>Partial payments</li>
+          <li>Discounts</li>
+          <li>Excel copy/paste</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <h3>All Pages <span class="plan-badge licensed">License</span></h3>
+        <ul class="plan-list">
+          <li>Scan across all NetSuite pages</li>
+          <li>Review across all pages</li>
+          <li>Apply across all pages</li>
+          <li>Includes everything in Current Page</li>
+        </ul>
+      </div>
+    </div>
+    <div class="features-grid" style="margin-bottom: 1.5rem;">
+      <div class="feature-card">
+        <h3>Monthly</h3>
+        <div class="price">$14.99 <span>/ month</span></div>
+      </div>
+      <div class="feature-card">
+        <h3>Yearly</h3>
+        <div class="price">$119 <span>/ year</span></div>
+      </div>
+      <div class="feature-card">
+        <h3>Lifetime</h3>
+        <div class="price">$199 <span>one-time</span></div>
+      </div>
+    </div>
+    <p class="pricing-note">Every plan unlocks All Pages. Enter your license key in the ApplyFast extension to activate it.</p>
   </section>
 
   <!-- How It Works -->
@@ -729,8 +824,8 @@
 
       <h3>Choose a Mode</h3>
       <ul>
-        <li><strong>This page only</strong> - Preview and Apply use the rows currently loaded on the Invoices subtab. This is the quickest option when all the open transactions you need are on the page shown.</li>
-        <li><strong>All pages</strong> - For lists that NetSuite splits across several pages. ApplyFast scans every page first, then previews and applies across all scanned pages.</li>
+        <li><strong>This page only</strong> (free) - Preview and Apply use the rows currently loaded on the Invoices subtab. This is the quickest option when all the open transactions you need are on the page shown.</li>
+        <li><strong>All pages</strong> (license) - For lists that NetSuite splits across several pages. ApplyFast scans every page first, then previews and applies across all scanned pages.</li>
       </ul>
 
       <h3>Preview and Apply (This page only)</h3>
@@ -743,6 +838,7 @@
       <p>If you edit the pasted lines, or the customer, page or rows change after Preview, the Preview is cleared and nothing is changed. Click Review Cash Application again.</p>
 
       <h3>Preview and Apply (All pages)</h3>
+      <p>All pages mode requires an ApplyFast license. See <a href="#pricing">Pricing</a>.</p>
       <ol>
         <li>Select <strong>All pages</strong> and click <strong>Scan All Pages</strong>. ApplyFast switches the NetSuite range to each page, reads it once NetSuite has finished loading it, then returns to the page you started on. Scanning only reads: it never changes Payment, Disc. Taken or Apply and never saves. You can stop the scan at any time.</li>
         <li>When every page shows <em>Scanned</em>, paste your lines and click <strong>Review Cash Application</strong>. It is not available until the scan is complete.</li>
@@ -796,11 +892,20 @@
   <section class="guide" id="faq">
     <h2 class="section-title">FAQ</h2>
     <div class="guide-content">
+      <h3>Is ApplyFast free?</h3>
+      <p>Yes. Current-page cash application is free: review and match invoices, apply payments, partial payments, discounts and Excel copy/paste. A license is only needed for multi-page features. Existing users keep All pages access for 30 days after updating; after that, current-page features stay free.</p>
+
+      <h3>What does a license unlock?</h3>
+      <p>A license unlocks All pages mode: scanning, reviewing and applying across all of your NetSuite transaction pages. Plans are $14.99/month, $119/year or $199 one-time. See <a href="#pricing">Pricing</a>.</p>
+
+      <h3>Can I use ApplyFast without a license?</h3>
+      <p>Yes. Everything in This page only mode works without a license, with no time limit.</p>
+
       <h3>Does ApplyFast save the NetSuite transaction?</h3>
       <p>No. ApplyFast only ticks Apply and fills Payment and Disc. Taken on the Invoices subtab. It never clicks Save. Review the payment and save it in NetSuite yourself.</p>
 
       <h3>Does ApplyFast send my data anywhere?</h3>
-      <p>No. All processing happens locally in your browser. Invoice numbers, amounts and customer information are not sent to any external server.</p>
+      <p>No. All cash application processing happens locally in your browser. Invoice numbers, amounts and customer information are not sent to any external server. If you activate a license, the extension checks your license key with the licensing service.</p>
 
       <h3>What happens if a reference is ambiguous?</h3>
       <p>It is skipped, not guessed. A partial match, an Invoice reference that matches more than one row, or a line with an amount that matches more than one row is reported in the Preview with the reason. Use the exact Ref No. and click Review Cash Application again.</p>
@@ -845,7 +950,7 @@
   <section class="installation" id="install">
     <div class="installation-content">
       <h2>Install ApplyFast</h2>
-      <p style="font-size: 1.2rem; margin-bottom: 2rem;">Get started in just a few simple steps</p>
+      <p style="font-size: 1.2rem; margin-bottom: 2rem;">Get started free in just a few simple steps</p>
       <div class="installation-steps">
         <ol>
           <li>Click the <strong>"Install from Chrome Web Store"</strong> button below</li>
@@ -858,7 +963,6 @@
       <div style="margin-top: 2rem;">
         <a href="https://chromewebstore.google.com/detail/applyfast-%E2%80%93-netsuite-cash/ohalkkngickdnobmmlnhnikpmnogcghm" target="_blank" class="btn btn-primary" style="background: white; color: #0F2D4A; font-size: 1.2rem; padding: 1.2rem 2.5rem;">Install from Chrome Web Store</a>
       </div>
-      <p style="margin-top: 1.5rem; font-size: 0.95rem; opacity: 0.95; font-weight: 500;">✅ <strong>Yes, confirmed:</strong> The Chrome Web Store link will remain the same even when you update the extension package. Your users will always get the latest version automatically!</p>
     </div>
   </section>
 
@@ -867,6 +971,7 @@
     <div class="footer-content">
       <div class="footer-links">
         <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
         <a href="#how-it-works">How It Works</a>
         <a href="#guide">Guide</a>
         <a href="#faq">FAQ</a>
