@@ -50,7 +50,7 @@
   // After Save: the saved page first, then the confirmation card, then (first remittance) the payoff.
   const SAVED_PAGE_MS = 2400;
   const SAVED_CARD_MS = 2600;
-  const GET_APPLYFAST_URL = 'https://getapplyfast.github.io/';
+  const GET_APPLYFAST_URL = 'https://applyfast.store/';
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Dimming starts below the demo header, so branding, Reset and navigation are never dimmed.
