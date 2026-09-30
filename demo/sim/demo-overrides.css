@@ -1,0 +1,24 @@
+/* ApplyFast Interactive Demo: demo banner, toast and mode tags. The extension's external links
+   (website, demo, pricing, support) are not part of the demo. */
+#applyFastBox #guideLink,
+#applyFastBox #afDemoLink,
+#applyFastBox #afPricingLink,
+#applyFastBox #buyCoffeeBtn { display: none !important; }
+
+.demo-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 7px 16px; background: #FFF4D6; border-bottom: 1px solid #E8C979; color: #5C4400; font: 12.5px/1.4 "Segoe UI", Helvetica, Arial, sans-serif; }
+.demo-banner strong { font-size: 13px; }
+.demo-banner-legal { color: #7A6320; font-size: 11.5px; }
+.demo-banner-btn { margin-left: auto; padding: 3px 10px; border: 1px solid #C9A64A; border-radius: 3px; background: #fff; color: #5C4400; font: 600 12px "Segoe UI", Helvetica, Arial, sans-serif; cursor: pointer; }
+
+#demoToast { position: fixed; left: 50%; bottom: 24px; z-index: 2147483000; max-width: 520px; transform: translateX(-50%); padding: 10px 16px; border-radius: 6px; background: #1F2937; color: #fff; font: 13px/1.45 "Segoe UI", Helvetica, Arial, sans-serif; white-space: pre-wrap; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); }
+#demoToast[hidden] { display: none; }
+
+.demo-embedded .demo-banner { display: none; }
+
+/* After Apply, the rows ApplyFast wrote stand out while the visitor checks them and saves.
+   (The guide page's spotlight points at the next control.) */
+body[data-demo-focus="save"] #apply_splits tr.erp-applied td { background: #FFF6D8 !important; }
+
+#applyFastBox .demo-tag { display: block; margin-top: 3px; font-size: 10.5px; font-style: normal; font-weight: 600; }
+#applyFastBox .demo-tag-free { color: #047857; }
+#applyFastBox .demo-tag-licensed { color: #92400E; }

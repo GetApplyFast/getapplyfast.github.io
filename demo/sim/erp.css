@@ -1,0 +1,68 @@
+/* ApplyFast Interactive Demo: fictional enterprise-ERP styling. Every rule is scoped to .erp or
+   the Invoices sublist so nothing leaks into the injected ApplyFast panel. */
+body.erp { margin: 0; background: #F2F4F7; color: #262626; font: 13px/1.4 "Open Sans", Helvetica, Arial, sans-serif; }
+
+.erp-topbar { display: flex; align-items: center; gap: 24px; height: 44px; padding: 0 16px; background: #22364A; color: #fff; }
+.erp-logo { font-weight: 700; font-size: 16px; letter-spacing: .3px; }
+.erp-logo-sub { margin-left: -16px; color: #AFC0D0; font-size: 12px; }
+.erp-search { flex: 0 0 320px; padding: 5px 10px; border-radius: 3px; background: #394E63; color: #AFC0D0; font-size: 12px; }
+.erp-account { margin-left: auto; font-size: 12px; color: #D5DEE7; }
+.erp-menubar { display: flex; gap: 2px; height: 32px; padding: 0 12px; background: #3C5873; }
+.erp-menubar span { padding: 7px 12px; color: #E6EDF3; font-size: 12.5px; }
+.erp-menubar .is-active { background: #2C465E; color: #fff; font-weight: 600; }
+
+.erp-page { padding: 10px 18px 24px; }
+.erp-titlerow { display: flex; align-items: baseline; gap: 12px; }
+.erp .uir-page-title { margin: 4px 0 8px; font-size: 22px; font-weight: 400; color: #4D5F79; }
+.erp-crumb { color: #6B7A8C; font-size: 12px; }
+.erp-buttons { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.erp-btn { padding: 4px 12px; border: 1px solid #B2B2B2; border-radius: 3px; background: linear-gradient(#FAFAFA, #E5E5E5); color: #333; font: 600 12.5px "Open Sans", Helvetica, Arial, sans-serif; cursor: pointer; }
+.erp-btn-primary { border-color: #125AB2; background: linear-gradient(#4C8EE0, #1467CC); color: #fff; }
+.erp-status { margin-left: 8px; color: #B42318; font-size: 12px; font-weight: 600; }
+.erp-btn:disabled { cursor: default; opacity: .75; }
+.erp-saved { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 0 0 10px; padding: 8px 12px; border: 1px solid #9FD4B1; border-radius: 3px; background: #EDF8F1; color: #1D5B35; font-size: 12.5px; }
+.erp-saved[hidden] { display: none; }
+.erp-saved b { font-size: 14px; }
+.erp-saved em { margin-left: auto; color: #4F6B5A; font-size: 11.5px; }
+
+.erp-section { padding: 4px 8px; border-bottom: 1px solid #D0D7DE; background: #E3E9EF; color: #4D5F79; font-weight: 600; font-size: 12.5px; }
+.erp-fields { display: flex; gap: 28px; padding: 10px 8px 14px; background: #fff; border: 1px solid #D0D7DE; border-top: 0; }
+.erp-col { display: flex; flex-direction: column; min-width: 190px; }
+.erp-label { margin-top: 6px; color: #6F6F6F; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
+.erp-req { color: #D40000; }
+.erp-input { margin-top: 2px; padding: 3px 6px; border: 1px solid #B6BEC7; border-radius: 2px; background: #fff; color: #262626; font: 12.5px "Open Sans", Helvetica, Arial, sans-serif; width: 130px; }
+.erp-wide { width: 220px; }
+.erp-amount { text-align: right; font-weight: 600; }
+.erp-totals { min-width: 170px; margin-left: auto; padding: 6px 10px; border: 1px solid #DCE3EA; background: #F7F9FB; }
+.erp-totals div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 3px 0; font-size: 12px; color: #555; }
+.erp-totals b, .erp-totals input { font-weight: 700; color: #262626; text-align: right; }
+.erp-totals input { width: 90px; border: 0; background: transparent; font: 700 12px "Open Sans", Helvetica, Arial, sans-serif; padding: 0; }
+
+.erp-tabs { display: flex; gap: 2px; margin-top: 14px; border-bottom: 2px solid #607D9A; }
+.erp-tabs span, .erp-subtabs span { padding: 5px 14px; background: #D9E1E8; color: #4D5F79; font-size: 12.5px; font-weight: 600; border-radius: 3px 3px 0 0; }
+.erp-tabs .is-active { background: #607D9A; color: #fff; }
+.erp-tabbody { padding: 8px; background: #fff; border: 1px solid #D0D7DE; border-top: 0; }
+.erp-subtabs { display: flex; gap: 2px; margin-bottom: 6px; border-bottom: 1px solid #C5D0DB; }
+.erp-subtabs .is-active { background: #fff; border: 1px solid #C5D0DB; border-bottom-color: #fff; margin-bottom: -1px; color: #262626; }
+.erp-listbar { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: #555; }
+.erp-listbar .erp-input { width: 150px; }
+.erp-range { position: relative; display: inline-block; }
+.erp-listbar .erp-range-input { padding-right: 20px; cursor: pointer; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23607D9A'/%3E%3C/svg%3E") no-repeat right 7px center; }
+.erp-range-menu { position: absolute; top: 100%; left: 0; z-index: 10; min-width: 164px; margin-top: 1px; border: 1px solid #B6BEC7; background: #fff; box-shadow: 0 3px 8px rgba(0, 0, 0, .18); }
+.erp-range-menu[hidden] { display: none; }
+.erp-range-opt { padding: 4px 8px; font-size: 12px; color: #262626; cursor: pointer; }
+.erp-range-opt:hover, .erp-range-opt.is-selected { background: #DDE8F4; }
+
+#apply_splits { border-collapse: collapse; width: 100%; font-size: 12px; }
+#apply_splits td { padding: 3px 7px; border-bottom: 1px solid #E6E9ED; white-space: nowrap; text-align: left; }
+#apply_splits tr.uir-machine-headerrow td { padding: 5px 7px; background: #E3E9EF; border-bottom: 1px solid #C5D0DB; color: #4D5F79; font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
+#apply_splits tr.uir-list-row-tr:nth-child(odd) td { background: #F9FAFB; }
+#apply_splits tr.uir-list-row-tr.erp-applied td { background: #EAF4FF; }
+#apply_splits td.erp-num { text-align: right; }
+#apply_splits .dottedlink { color: #255599; text-decoration: none; border-bottom: 1px dotted #255599; }
+#apply_splits input[type="text"] { width: 84px; padding: 2px 5px; border: 1px solid #B6BEC7; border-radius: 2px; text-align: right; font: 12px "Open Sans", Helvetica, Arial, sans-serif; }
+#apply_splits tr.uir-list-row-tr.erp-applied td:first-child { box-shadow: inset 3px 0 0 #1467CC; }
+#apply_splits tr.erp-row-leaving td { opacity: 0; transition: opacity .4s ease; }
+@keyframes erp-saved-flash { 0% { background: #FDE68A; } 100% { background: #EAF4FF; } }
+#apply_splits tr.erp-row-saved td { animation: erp-saved-flash 2.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { #apply_splits tr.erp-row-leaving td { transition: none; } #apply_splits tr.erp-row-saved td { animation: none; } }

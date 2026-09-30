@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Customer Payment - ApplyFast Interactive Demo</title>
+  <link rel="stylesheet" href="erp.css">
+  <link rel="stylesheet" href="demo-overrides.css">
+  <script src="demo-shims.js"></script>
+</head>
+<body class="erp">
+  <div class="demo-banner" id="demoBanner" role="note">
+    <strong>ApplyFast Interactive Demo</strong>
+    <span>This is an interactive simulation using fictional data. It is not an Oracle NetSuite environment.</span>
+    <span class="demo-banner-legal">Fictional interactive demonstration. Not affiliated with or endorsed by Oracle NetSuite.</span>
+    <button type="button" class="demo-banner-btn" id="demoReset" title="Restart this whole scenario. ApplyFast’s own Reset button only clears its working session.">Reset demo</button>
+  </div>
+  <div class="erp-topbar">
+    <span class="erp-logo">ApplyFast</span>
+    <span class="erp-logo-sub">Cash Application Demo</span>
+    <span class="erp-search">Search</span>
+    <span class="erp-account">Demo Company (fictional data) &middot; Accounts Receivable Clerk</span>
+  </div>
+  <div class="erp-menubar">
+    <span>Activities</span><span class="is-active">Transactions</span><span>Lists</span><span>Reports</span>
+  </div>
+
+  <div class="erp-page">
+    <div class="erp-titlerow">
+      <h1 class="uir-page-title">Customer Payment</h1>
+      <span class="erp-crumb">Transactions &rsaquo; Customers &rsaquo; Accept Customer Payments</span>
+    </div>
+    <div class="erp-buttons">
+      <input type="button" id="btn_multibutton_submitter" class="erp-btn erp-btn-primary" value="Save">
+      <span class="erp-status" id="erpStatus" role="alert" hidden></span>
+    </div>
+    <div class="erp-saved" id="erpSaved" role="status" hidden></div>
+
+    <div class="erp-section">Primary Information</div>
+    <div class="erp-fields">
+      <div class="erp-col">
+        <label class="erp-label" for="inpt_customer1">Customer <span class="erp-req">*</span></label>
+        <input class="erp-input erp-wide" name="inpt_customer" id="inpt_customer1" value="" readonly>
+        <input type="hidden" name="customer" id="hddn_customer_fs" value="">
+        <label class="erp-label" for="erpAccount">A/R Account</label>
+        <input class="erp-input erp-wide" id="erpAccount" value="1200 Accounts Receivable" readonly>
+      </div>
+      <div class="erp-col">
+        <label class="erp-label" for="erpPayment">Payment Amount <span class="erp-req">*</span></label>
+        <input class="erp-input erp-amount" id="erpPayment" value="0.00" readonly>
+        <label class="erp-label" for="erpDate">Date <span class="erp-req">*</span></label>
+        <input class="erp-input" id="erpDate" value="9/28/2026" readonly>
+      </div>
+      <div class="erp-col">
+        <label class="erp-label" for="erpMethod">Payment Method</label>
+        <input class="erp-input" id="erpMethod" value="ACH" readonly>
+        <label class="erp-label" for="erpCheck">Check #</label>
+        <input class="erp-input" id="erpCheck" value="DEMO-ACH-7781" readonly>
+      </div>
+      <div class="erp-col erp-totals">
+        <div><span>To Apply</span><b id="erpToApply">0.00</b></div>
+        <div><span>Applied</span><input type="text" id="applied" name="applied" readonly value="0.00" aria-label="Applied"></div>
+      </div>
+    </div>
+
+    <div class="erp-tabs"><span class="is-active">Apply</span></div>
+    <div class="erp-tabbody">
+      <div class="erp-subtabs"><span class="is-active">Invoices</span></div>
+      <div class="erp-listbar">
+        <label for="inpt_applyrange_9">Range</label>
+        <span class="erp-range" id="apply_applyrange_fs">
+          <input class="erp-input erp-range-input" name="inpt_applyrange" id="inpt_applyrange_9" role="combobox" value="" readonly>
+          <input type="hidden" name="applyrange" id="hddn_applyrange_9" value="0">
+          <div class="erp-range-menu" id="erpRangeMenu" role="listbox" hidden></div>
+        </span>
+      </div>
+      <table id="apply_splits" class="listtable uir-list-table">
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="../data/invoices.js"></script>
+  <script src="erp.js"></script>
+  <script src="../vendor/applyfast-core.js"></script>
+  <script src="../vendor/content.js"></script>
+  <script src="demo-labels.js"></script>
+</body>
+</html>

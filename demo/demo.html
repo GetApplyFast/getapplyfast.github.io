@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>ApplyFast Interactive Demo</title>
+  <link rel="stylesheet" href="guide/guide.css">
+</head>
+<body class="tour-body">
+  <header class="tour-bar" id="demoBanner" role="note">
+    <strong>ApplyFast Interactive Demo</strong>
+    <span>This is an interactive simulation using fictional data. It is not an Oracle NetSuite environment.</span>
+    <span class="tour-bar-legal">Fictional interactive demonstration. Not affiliated with or endorsed by Oracle NetSuite.</span>
+    <nav class="tour-bar-nav" aria-label="Demo navigation">
+      <button type="button" class="tour-bar-btn" id="tourScenarios">All scenarios</button>
+      <button type="button" class="tour-bar-btn" id="tourReset" title="Restart this whole scenario. ApplyFast’s own Reset button only clears its working session.">Reset demo</button>
+    </nav>
+  </header>
+  <div class="tour">
+    <aside class="tour-guide" id="guide" aria-label="Demo guide" data-spotlight-clip></aside>
+    <main class="tour-stage">
+      <iframe id="simFrame" src="sim/custpymt.nl.html" title="Fictional Customer Payment page with the ApplyFast panel"></iframe>
+    </main>
+  </div>
+  <script src="data/invoices.js"></script>
+  <script src="data/scenarios.js"></script>
+  <script src="guide/excel.js"></script>
+  <script src="guide/spotlight.js"></script>
+  <script src="guide/scale.js"></script>
+  <script src="guide/guide.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "ApplyFast Interactive Demo",
+  "vendor": [
+    {
+      "source": "applyfast-core.js",
+      "file": "vendor/applyfast-core.js",
+      "sha256": "f0daf6b7938aba3863e79957386a29540942ea978ea00a538ee532cd01e8231c"
+    },
+    {
+      "source": "content.js",
+      "file": "vendor/content.js",
+      "sha256": "f68c4b81966810a9fc2c93a8b4131dbf165709218041593d5d36cd67a9d194d6"
+    },
+    {
+      "source": "icons/brand/applyfast-mark.png",
+      "file": "vendor/icons/brand/applyfast-mark.png",
+      "sha256": "37578c0a17bb94008845655dd8dd95a60e29053b5dbe8b7f0e15acb734a3832c"
+    },
+    {
+      "source": "icons/brand/applyfast-launcher-128.png",
+      "file": "vendor/icons/brand/applyfast-launcher-128.png",
+      "sha256": "53ddd747337909fedbe0cd08e4c80c5af8e8b6ed59e1c29bb1593cee71780e14"
+    }
+  ]
+}
