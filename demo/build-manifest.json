@@ -4,12 +4,12 @@
     {
       "source": "applyfast-core.js",
       "file": "vendor/applyfast-core.js",
-      "sha256": "f0daf6b7938aba3863e79957386a29540942ea978ea00a538ee532cd01e8231c"
+      "sha256": "7813e87816afae71e12f486f2cd6b91729a44ab0a94c8ca91a37b1770bd70332"
     },
     {
       "source": "content.js",
       "file": "vendor/content.js",
-      "sha256": "f68c4b81966810a9fc2c93a8b4131dbf165709218041593d5d36cd67a9d194d6"
+      "sha256": "57406bd38e6a83b680a6bae44edc4114698c6ba566ecaa640fff4d00dbf6a9a8"
     },
     {
       "source": "icons/brand/applyfast-mark.png",

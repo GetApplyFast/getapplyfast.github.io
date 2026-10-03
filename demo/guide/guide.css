@@ -20,7 +20,7 @@ body.tour-body { margin: 0; display: flex; flex-direction: column; background: #
 .tour-muted { color: #6B7280; }
 .tour-try { margin: 14px 0 0; font-size: 18px; color: #0F2D4A; }
 .tour-instr { font-weight: 700; font-size: 15px; color: #0F2D4A; }
-.tour-licensed { color: #92400E; font-size: 12.5px; font-weight: 600; font-style: normal; }
+.tour-free { color: #92400E; font-size: 12.5px; font-weight: 600; font-style: normal; }
 
 .tour-btn { padding: 8px 16px; border: 1px solid #CBD5E1; border-radius: 6px; background: #fff; color: #0F2D4A; font: 600 14px "Segoe UI", Helvetica, Arial, sans-serif; cursor: pointer; }
 .tour-primary { border-color: #0F2D4A; background: #0F2D4A; color: #fff; }
@@ -208,20 +208,20 @@ a.tour-btn { display: inline-block; text-decoration: none; }
   .tour-payoff .tour-scale-grid { grid-template-columns: 1fr; }
 }
 
-/* Premium (All pages) treatment. */
-.tour-premium-badge { align-self: flex-start; margin-bottom: 2px; padding: 1px 8px; border: 1px solid #D6B25E; border-radius: 999px; background: #FFF8E6; color: #7A5400; font-size: 10.5px; font-weight: 700; font-style: normal; letter-spacing: .04em; text-transform: uppercase; }
-.tour-card.is-premium { border-color: #E3C979; }
-.tour-premium { margin: 8px 0 10px; padding: 10px 12px; border: 1px solid #E3C979; border-radius: 10px; background: linear-gradient(#FFFBEF, #fff); }
-.tour-premium p { margin: 0 0 4px; }
-.tour-premium-inline { margin: 6px 0 0; padding: 8px 10px; }
-.tour-premium-inline p:last-child { margin-bottom: 0; }
-.tour-premium-title { font-weight: 800; color: #7A5400; letter-spacing: .02em; }
-.tour-premium-lead { color: #0F2D4A; font-weight: 600; }
-.tour-premium-note { color: #92400E; font-size: 12px; font-weight: 600; }
-.tour-premium-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; }
-.tour-premium-modes li { display: flex; flex-direction: column; padding: 5px 8px; border: 1px solid #E5E7EB; border-radius: 6px; background: #fff; }
-.tour-premium-modes li + li { border-color: #E3C979; }
-.tour-premium-modes span { color: #6B7280; }
+/* Multi-page (free) treatment. */
+.tour-multipage-badge { align-self: flex-start; margin-bottom: 2px; padding: 1px 8px; border: 1px solid #D6B25E; border-radius: 999px; background: #FFF8E6; color: #7A5400; font-size: 10.5px; font-weight: 700; font-style: normal; letter-spacing: .04em; text-transform: uppercase; }
+.tour-card.is-multipage { border-color: #E3C979; }
+.tour-multipage { margin: 8px 0 10px; padding: 10px 12px; border: 1px solid #E3C979; border-radius: 10px; background: linear-gradient(#FFFBEF, #fff); }
+.tour-multipage p { margin: 0 0 4px; }
+.tour-multipage-inline { margin: 6px 0 0; padding: 8px 10px; }
+.tour-multipage-inline p:last-child { margin-bottom: 0; }
+.tour-multipage-title { font-weight: 800; color: #7A5400; letter-spacing: .02em; }
+.tour-multipage-lead { color: #0F2D4A; font-weight: 600; }
+.tour-multipage-note { color: #92400E; font-size: 12px; font-weight: 600; }
+.tour-multipage-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.tour-multipage-modes li { display: flex; flex-direction: column; padding: 5px 8px; border: 1px solid #E5E7EB; border-radius: 6px; background: #fff; }
+.tour-multipage-modes li + li { border-color: #E3C979; }
+.tour-multipage-modes span { color: #6B7280; }
 .tour-scale-note { margin: 10px 0; padding: 10px 12px; border-left: 3px solid #D6B25E; background: #FFFBEF; border-radius: 4px; }
 .tour-scale-note p { margin: 0 0 4px; }
 .tour-scale-note-title { font-weight: 700; color: #0F2D4A; }
@@ -267,7 +267,7 @@ a.tour-btn { display: inline-block; text-decoration: none; }
 .xl-delrow:hover { background: #FEF2F2; }
 .xl-delrow[hidden] { display: none; }
 
-/* Featured (premium) scenario above the numbered list. */
+/* Featured multi-page scenario above the numbered list. */
 .tour-featured { margin: 0 0 14px; }
 .tour-featured-label { margin: 0 0 6px; color: #7A5400; font-size: 11.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .tour-card-featured { position: relative; overflow: hidden; width: 100%; padding: 12px 14px; border: 1px solid #D6B25E; background: linear-gradient(135deg, #FFFBEF, #fff 65%); animation: tour-feature-glow 8s ease-in-out infinite; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
@@ -291,3 +291,8 @@ a.tour-btn { display: inline-block; text-decoration: none; }
   .tour-card-featured::after { animation: none; display: none; }
 }
 .demo-spotlight-ring[data-ring="warn-more"] { border: 2px solid #F59E0B; background: rgba(245, 158, 11, .08); }
+
+/* Story B: the downloaded Cash Application Report, centered under the existing spotlight pulse. No blur. */
+.tour-report-stage { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147482900; display: flex; align-items: center; justify-content: center; padding: 24px; pointer-events: none; }
+.tour-report-stage #tourReport { pointer-events: auto; box-sizing: border-box; width: min(1040px, 100%); max-height: 100%; overflow: auto; padding: 22px 24px 18px; border-radius: 14px; background: #fff; box-shadow: 0 24px 60px rgba(15, 23, 42, .35); }
+.tour-report-stage .tour-report { overflow: auto; }

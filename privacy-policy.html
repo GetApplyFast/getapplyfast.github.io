@@ -14,7 +14,7 @@
 </head>
 <body>
   <h1>Privacy Policy for ApplyFast – NetSuite Cash Application Assistant</h1>
-  <p class="updated">Last updated: September 28, 2026</p>
+  <p class="updated">Last updated: October 2, 2026</p>
 
   <p>ApplyFast is a Chrome extension that helps apply customer payments to invoices on NetSuite's Accept Customer Payment screen. ApplyFast has no server of its own. This policy explains what the extension reads, what it stores on your computer, and the one case where it sends data outside your browser: license checks with Lemon Squeezy.</p>
 
@@ -32,7 +32,7 @@
   <p>ApplyFast does not use analytics, tracking, advertising or error-reporting services, and does not use Chrome sync.</p>
 
   <h2>License information</h2>
-  <p>This page only mode is free and does not require a license. All pages mode requires an ApplyFast license. Licenses are provided through Lemon Squeezy, ApplyFast's license and payment provider.</p>
+  <p>Cash application is free on this page and across all pages, and does not require a license. Review &amp; Reconciliation is ApplyFast Premium. A paid license provides Review &amp; Reconciliation. A 14-day trial provides Review &amp; Reconciliation only: it is offered after a clean successful Apply, and it starts only if you confirm it. Cash application, on this page and across all pages, remains free during the trial and after it ends. Licenses are provided through Lemon Squeezy, ApplyFast's license and payment provider.</p>
   <p>If you activate a license, ApplyFast sends requests directly from your browser to the Lemon Squeezy License API (<code>api.lemonsqueezy.com</code>). Chrome asks for your permission before the first request. The requests contain:</p>
   <ul>
     <li><strong>Activate:</strong> your license key and a randomly generated name for this browser installation (for example "ApplyFast Chrome 1a2b3c4d").</li>
@@ -40,14 +40,14 @@
     <li><strong>Deactivate:</strong> your license key and the license instance ID.</li>
   </ul>
   <p>These requests contain no NetSuite data and are sent without cookies. As with any web request, Lemon Squeezy also receives standard connection information such as your IP address.</p>
-  <p>The license key is used only to activate, check and deactivate your ApplyFast license so that All pages mode can be unlocked.</p>
+  <p>The license key is used only to activate, check and deactivate your ApplyFast license so that Review &amp; Reconciliation can be unlocked.</p>
 
   <h2>License checking</h2>
-  <p>While a license is active, ApplyFast checks it with Lemon Squeezy about once a day, and retries hourly after a failed check. You can also check it at any time with the Re-check button in the ApplyFast popup. If the license cannot be verified for 7 days, All pages mode locks until a check succeeds. If you never activate a license, ApplyFast makes no license requests.</p>
+  <p>While a license is active, ApplyFast checks it with Lemon Squeezy about once a day, and retries hourly after a failed check. You can also check it at any time with the Re-check button in the ApplyFast popup. If the license cannot be verified for 7 days, Review &amp; Reconciliation locks until a check succeeds. Cash application, including multi-page, stays free. If you never activate a license, ApplyFast makes no license requests.</p>
 
   <h2>What is stored on your computer</h2>
   <ul>
-    <li><strong>Chrome extension storage (local):</strong> if you activate a license, the license key, license instance ID and instance name, the Lemon Squeezy store, product and plan identifiers, the license status and expiry date, the times of activation and the last checks, and the last license error message. If you updated from a version before 1.6, the date your 30-day transition period started.</li>
+    <li><strong>Chrome extension storage (local):</strong> if you activate a license, the license key, license instance ID and instance name, the Lemon Squeezy store, product and plan identifiers, the license status and expiry date, the times of activation and the last checks, and the last license error message. If you updated from a version before 1.6, the date your 30-day transition period started. That date times a transition for users updating from before 1.6, and the transition covers Review &amp; Reconciliation only.</li>
     <li><strong>Chrome extension session storage:</strong> when you start activation from the toolbar popup, the key may be held for up to 10 minutes so activation can finish in a new tab. It is deleted as soon as it is used and is cleared when the browser closes.</li>
     <li><strong>NetSuite site storage (localStorage):</strong> a single flag, <code>applyFast_monthlyMessage_YEAR_MONTH</code>, so a support message is shown at most once a month. It contains no personal or NetSuite data.</li>
   </ul>

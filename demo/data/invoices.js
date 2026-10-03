@@ -60,11 +60,12 @@
     similar: { ref: invoices[1].ref, sibling: invoices[21].ref },
     unmatched: UNMATCHED_REF
   };
+  const paidInFull = ref => `${ref}=${invoices.find(i => i.ref === ref).due.toFixed(2)}`;
   const sampleText = [
-    sample.full[0],
-    sample.full[1],
+    paidInFull(sample.full[0]),
+    paidInFull(sample.full[1]),
     `${sample.partial.ref}=${sample.partial.payment}`,
-    sample.full[2],
+    paidInFull(sample.full[2]),
     `${sample.discount.ref}|${sample.discount.discount.toFixed(2)}|${sample.discount.payment.toFixed(2)}`,
     sample.unmatched
   ].join('\n');

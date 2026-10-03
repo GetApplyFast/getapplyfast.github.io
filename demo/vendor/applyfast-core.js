@@ -43,8 +43,8 @@
 
   /**
    * Parses one input line. Supported formats:
-   *   REF                  apply remaining balance
-   *   REF=payment          partial / specific payment
+   *   REF                  no amount: matched and shown in Review, never applied (use REF=AMOUNT)
+   *   REF=payment          the payment to apply
    *   REF|discount|payment discount plus payment (blank, 0 or accounting "-" discount = no discount)
    */
   function parseLine(raw, lineNo) {
@@ -93,6 +93,11 @@
     return entry;
   }
 
+  // The reference of an input line as parseLine reads it, without amounts or separators ('' for none).
+  function remittanceReference(raw) {
+    return parseLine(raw, 0).ref;
+  }
+
   /**
    * Parses the whole textarea. Empty lines are ignored. A reference that appears
    * on more than one line is flagged DUPLICATE_INPUT on every line (never last-wins).
@@ -133,7 +138,7 @@
 
   /**
    * Rewrites pasted spreadsheet rows into ApplyFast syntax.
-   *   2 columns: REF, payment            -> REF=payment (blank payment -> REF)
+   *   2 columns: REF, payment            -> REF=payment (blank payment -> REF, which is never applied)
    *   3 columns: REF, discount, payment  -> REF|discount|payment
    * Empty tab cells keep their position, so a blank payment is never read as the discount.
    * Single-space rows are split only when every amount token has explicit decimals.
@@ -231,9 +236,9 @@
    * rows: [{ ref, po, type?, otherCells?: string[] }]
    * Priority: exact Ref No. > exact PO > exact whole token in other cells > partial.
    * Partial matches need MIN_PARTIAL_LENGTH characters and are flagged, never auto-selected.
-   * Multiple rows are only allowed for a full-balance line (no amount) whose exact match
-   * hits rows that are all a known non-Invoice type; each row then uses its own Amt. Due.
-   * Lines with an explicit payment or discount always need a unique row.
+   * Multiple rows are only allowed for a bare REF line (no amount) whose exact match hits rows
+   * that are all a known non-Invoice type; the rows are shown in Review but, having no amount,
+   * are never applied. Lines with an explicit payment or discount always need a unique row.
    * Returns one result per entry: { entry, status, matchType, candidates, multiRow, reason }.
    */
   function matchEntries(entries, rows) {
@@ -272,12 +277,12 @@
 
       if (candidates.length === 0) return { entry, status: 'NOT_FOUND', matchType: null, candidates, multiRow: false, reason: 'Not found in the loaded rows' };
       if (candidates.length > 1) {
-        const fullBalance = entry.format === 'ref';
-        if (fullBalance && matchType !== 'partial' && candidates.every(i => isNonInvoiceType(rows[i].type))) {
-          return { entry, status: 'MATCHED', matchType, candidates, multiRow: true, reason: `Applies to ${candidates.length} non-Invoice rows, each at its own Amt. Due` };
+        const bareRef = entry.format === 'ref';
+        if (bareRef && matchType !== 'partial' && candidates.every(i => isNonInvoiceType(rows[i].type))) {
+          return { entry, status: 'MATCHED', matchType, candidates, multiRow: true, reason: `Matches ${candidates.length} non-Invoice rows` };
         }
         let reason = `Matches ${candidates.length} rows`;
-        if (!fullBalance) reason += '; a line with an amount must match exactly one row';
+        if (!bareRef) reason += '; a line with an amount must match exactly one row';
         else if (matchType === 'partial') reason += '; use the exact reference';
         else reason += '; Invoice rows need a unique reference';
         return { entry, status: 'MULTIPLE_MATCH', matchType, candidates, multiRow: false, reason };
@@ -310,6 +315,43 @@
     });
 
     return results;
+  }
+
+  /* ---------- Read-only invoice details ---------- */
+  // Invoices columns captured for Review & Reconciliation: Date, Orig. Amt. and Disc. Avail.
+  // They are read only. They never take part in matching, planning, the scan fingerprint
+  // (rowDetail) or any write. Labels arrive as the content script reads the header: lowercase,
+  // single spaces ("orig. amt."). "Disc. Date" and "Group Date" are not the Date column.
+  const INFO_COLUMNS = Object.freeze({
+    date: /^date$/,
+    origAmt: /^orig(inal)?\.?\s*(amt|amount)\.?$/,
+    discAvail: /^disc(ount)?\.?\s*avail(able)?\.?$/
+  });
+
+  // Header labels -> { date, origAmt, discAvail } column positions (first match; absent when not found).
+  function infoColumns(labels) {
+    const out = {};
+    (labels || []).forEach((label, i) => {
+      const text = String(label == null ? '' : label).trim();
+      Object.keys(INFO_COLUMNS).forEach(name => {
+        if (out[name] === undefined && INFO_COLUMNS[name].test(text)) out[name] = i;
+      });
+    });
+    return out;
+  }
+
+  // Cell texts -> row fields. Amounts follow the Amt. Due convention: the text as shown, plus the
+  // strict US value or null when the cell is blank or not a strict US amount. Date stays as shown.
+  function infoValues(texts) {
+    const t = texts || {};
+    const text = v => String(v == null ? '' : v).trim();
+    const amount = s => {
+      if (!s) return null;
+      const parsed = parseAmountStrict(s);
+      return parsed.ok ? parsed.value : null;
+    };
+    const origAmtText = text(t.origAmt), discAvailText = text(t.discAvail);
+    return { date: text(t.date), origAmt: amount(origAmtText), origAmtText, discAvail: amount(discAvailText), discAvailText };
   }
 
   /* ---------- Preview / Apply protection ---------- */
@@ -573,6 +615,34 @@
   }
 
   /**
+   * This page only: the loaded Invoices rows as a one-page scan plus the match against them, in the
+   * shapes matchAcrossPages and the scan have, so both modes share buildPagePlan, buildMultiApplyPlan,
+   * buildCashWritePlan and buildReconciliationResults. Only collection differs: matching sees the loaded
+   * rows alone, nothing has to be scanned and no page agreement is required.
+   * page: { customerId, rangeText, rows } read as for addPage. A row without a NetSuite row number gets
+   * its position on the page (range start - 1 + index) so every plan item points at exactly one row.
+   * Returns { scan, match }; page is not modified.
+   */
+  function matchLoadedPage(entries, page) {
+    const src = page || {};
+    const loaded = src.rows || [];
+    const range = parseRange(src.rangeText) || { start: 1, end: Math.max(loaded.length, 1), total: null };
+    const rows = loaded.map((r, i) => (Number.isInteger(r.lineIndex) ? r : Object.assign({}, r, { lineIndex: range.start - 1 + i })));
+    const record = makePageRecord({ customerId: src.customerId, rangeText: src.rangeText || '', rows }, range);
+    const scan = { customerId: record.customerId, total: range.total, pages: new Map([[range.start, record]]) };
+    const where = rows.map((row, i) => ({ pageStart: range.start, rangeText: record.rangeText, rowIndex: i, lineIndex: row.lineIndex }));
+    const results = matchEntries(entries, rows).map(r => {
+      const locations = r.candidates.map(c => where[c]);
+      const out = Object.assign({}, r, { locations, pageStarts: locations.length ? [range.start] : [] });
+      if (r.status === 'NOT_FOUND') out.reason = 'Not found in the loaded Invoices rows';
+      return out;
+    });
+    const coverage = { total: range.total, scannedRows: rows.length, complete: true, missing: [], stale: [],
+      pages: [{ rangeText: record.rangeText, start: range.start, end: range.end, rows: rows.length, stale: '' }] };
+    return { scan, match: { ok: true, coverage, rows, results } };
+  }
+
+  /**
    * Groups matched lines by page for per-page Apply. Only MATCHED lines are planned; partial
    * matches, multiple matches, duplicates and invalid lines are listed in skipped.
    * A multi-row line whose rows sit on different pages cannot be applied all-or-nothing
@@ -757,17 +827,15 @@
   // List-level changes: the whole Apply stops before anything is written on the page.
   const APPLY_HALT_CODES = new Set(['CUSTOMER', 'TOTAL', 'RANGE', 'ROW_COUNT', 'ROW_SET', 'ORDER', 'LINE_NUMBERS', 'UNSETTLED', 'NOT_SCANNED', 'STALE']);
 
-  // The Payment and Discount a line asks for on a scanned row (full balance uses the scanned Amt. Due).
-  function plannedAmounts(entry, row) {
+  const NO_AMOUNT_REASON = 'No amount — use REF=AMOUNT';
+
+  // The Payment and Discount a line asks for on a row. Only an explicit amount (REF=AMOUNT or
+  // REF|discount|payment) is ever planned: a bare REF is matched for Review but never takes an amount
+  // from Amt. Due, Payment Received or any other balance.
+  function plannedAmounts(entry) {
     const discount = (typeof entry.discount === 'number' && entry.discount > 0) ? entry.discount : null;
-    let payment = entry.payment;
-    let reason = '';
-    if (payment === null || payment === undefined) {
-      if (row.amtDue === null || row.amtDue === undefined) reason = `Amt. Due "${row.amtDueText}" could not be read; enter an amount (REF=0.00)`;
-      else if (row.amtDue <= 0) reason = 'Amt. Due is 0.00';
-      else payment = row.amtDue;
-    }
-    return { payment: reason ? null : payment, discount, reason };
+    const payment = entry.payment === null || entry.payment === undefined ? null : entry.payment;
+    return { payment, discount: payment === null ? null : discount, reason: payment === null ? NO_AMOUNT_REASON : '' };
   }
 
   /**
@@ -925,8 +993,990 @@
     return `Apply complete — ${counts}`;
   }
 
+  /* ---------- Reconciliation analysis (Review & Reconciliation) ---------- */
+  // Describes a planned cash application in accounting terms. Analysis only: it never decides,
+  // changes or filters what is written. The safety state and write decision of every row are
+  // copied through untouched; the reconciliation status is a separate dimension.
+  //
+  // Two separate reconciliations:
+  // Cash:    actualCashReceived = totalApplied + unappliedAmount, so
+  //          cashVariance = actualCashReceived - totalApplied - unappliedAmount is 0 when every
+  //          cent received is accounted for. Unapplied cash is an outcome, not a variance.
+  // Invoice: applicationAmount + discountTaken never exceeds invoiceAmountRemaining, and
+  //          invoiceDifference = applicationAmount + discountTaken - invoiceAmountRemaining
+  //          (0 settled, negative = balance left open; never positive). invoiceVariance is
+  //          the sum over the applied rows, i.e. minus remainingInvoiceBalance.
+  // All money is compared and summed in whole cents.
+
+  const RECON_STATUS = Object.freeze({
+    EXACT: 'EXACT',                             // settled: application + discount = balance
+    SHORT_PAYMENT: 'SHORT_PAYMENT',             // the cash received did not cover the planned application
+    OVERPAYMENT: 'OVERPAYMENT',                 // cash beyond the balance; the excess stays unapplied
+    PARTIAL_APPLICATION: 'PARTIAL_APPLICATION', // a smaller amount was planned on purpose; balance stays open
+    NOT_APPLIED: 'NOT_APPLIED',                 // matched, but the write decision leaves the row alone
+    NEEDS_REVIEW: 'NEEDS_REVIEW',               // the data needed for the analysis is missing or invalid
+    UNMATCHED: 'UNMATCHED',                     // an input line that matched no invoice row
+    NO_APPLICATIONS: 'NO_APPLICATIONS'          // summary only: nothing to analyze
+  });
+  const DISCOUNT_STATUS = Object.freeze({ NONE: 'NONE', TAKEN: 'TAKEN', REVIEW: 'REVIEW' });
+  const APPLICATION_KIND = Object.freeze({ NEW: 'NEW', EXISTING: 'EXISTING', NONE: 'NONE' });
+
+  // A money input as whole cents: { ok, cents } or { ok: false, missing, reason }.
+  // Numbers must be finite, not negative and whole cents; text must be a strict US amount.
+  function moneyCents(value, label) {
+    if (value === null || value === undefined || value === '') return { ok: false, missing: true, reason: `${label} is missing` };
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return { ok: false, missing: false, reason: `${label} is not a number` };
+      if (value < 0) return { ok: false, missing: false, reason: `${label} is negative` };
+      const c = Math.round(value * 100);
+      if (Math.abs(value * 100 - c) > 1e-6) return { ok: false, missing: false, reason: `${label} has more than 2 decimals` };
+      return { ok: true, cents: c };
+    }
+    if (typeof value === 'string') {
+      if (/^\s*-/.test(value)) return { ok: false, missing: false, reason: `${label} is negative` };
+      const parsed = parseAmountStrict(value);
+      return parsed.ok ? { ok: true, cents: cents(parsed.value) } : { ok: false, missing: false, reason: `${label}: ${parsed.reason}` };
+    }
+    return { ok: false, missing: false, reason: `${label} is not an amount` };
+  }
+
+  const dollars = c => (c === null ? null : c / 100);
+  const usd = c => `$${formatUS(c / 100)}`;
+
+  // Discount Taken against Disc. Avail. A discount is never assumed valid just because it was entered.
+  function discountReview(discC, availC, balanceC) {
+    if (!discC) return { status: DISCOUNT_STATUS.NONE, reason: '' };
+    if (availC === null) return { status: DISCOUNT_STATUS.REVIEW, reason: 'Disc. Avail. is blank or unreadable; the discount cannot be confirmed' };
+    if (discC > availC) return { status: DISCOUNT_STATUS.REVIEW, reason: `Disc. Taken ${usd(discC)} exceeds Disc. Avail. ${usd(availC)}` };
+    if (balanceC !== null && discC > balanceC) return { status: DISCOUNT_STATUS.REVIEW, reason: `Disc. Taken ${usd(discC)} exceeds the balance ${usd(balanceC)}` };
+    return { status: DISCOUNT_STATUS.TAKEN, reason: `Within Disc. Avail. ${usd(availC)}` };
+  }
+
+  /**
+   * Reconciliation analysis of a full application plan. Pure: inputs are never modified.
+   *
+   * input.actualCashReceived  cash received (number or US amount text); missing or invalid cash is
+   *                           reported, never assumed.
+   * input.rows                one per planned invoice row, from either the single-page or the
+   *                           multi-page plan, in plan order:
+   *   { id, lineNo, raw, page, lineIndex, invoice, type, date, originalAmount, invoiceAmountRemaining,
+   *     discountAvailable, requestedAmount, discountTaken,
+   *     write: { willWrite, safetyStatus, overwrite, note } }
+   *   requestedAmount is the amount the line asks for (REF=AMOUNT); null for a bare REF, which is never applied.
+   * input.unmatched           input lines that matched no row: { lineNo, raw, invoice, amount, discount, safetyStatus, reason }
+   *
+   * Cash is allotted to the rows that end up applied (written now, or already holding the planned
+   * values), in plan order: each row takes up to its requestedAmount. Of that, at most the balance
+   * less the discount is applied; the rest of the row's share is unapplied cash (OVERPAYMENT: the
+   * line itself asked for more than the balance). A row whose share falls short of what it could
+   * absorb is SHORT_PAYMENT; a row that got all it asked for but asked for less than the balance is
+   * PARTIAL_APPLICATION. Excess on one row is never moved to another. Cash no row asked for is
+   * unapplied at cash level only; the rows it came with stay as they are.
+   */
+  function analyzeApplication(input) {
+    const src = input || {};
+    const cash = moneyCents(src.actualCashReceived, 'Actual cash received');
+    const cashInputStatus = cash.ok ? 'OK' : cash.missing ? 'NOT_PROVIDED' : 'INVALID';
+    let cashLeft = cash.ok ? cash.cents : null;
+    // Per-row working figures in cents, kept apart from the returned rows.
+    const calcs = [];
+
+    const rows = (src.rows || []).map((r, i) => {
+      const w = r.write || {};
+      const write = { willWrite: !!w.willWrite, safetyStatus: w.safetyStatus || '', overwrite: !!w.overwrite, note: w.note || '' };
+      const kind = write.willWrite ? APPLICATION_KIND.NEW
+        : write.safetyStatus === 'ALREADY_APPLIED' ? APPLICATION_KIND.EXISTING : APPLICATION_KIND.NONE;
+      const balance = moneyCents(r.invoiceAmountRemaining, 'Amt. Due');
+      const requested = moneyCents(r.requestedAmount, 'Planned amount');
+      const disc = r.discountTaken === null || r.discountTaken === undefined ? { ok: true, cents: 0 } : moneyCents(r.discountTaken, 'Disc. Taken');
+      const avail = moneyCents(r.discountAvailable, 'Disc. Avail.');
+      const orig = moneyCents(r.originalAmount, 'Orig. Amt.');
+      const balanceC = balance.ok ? balance.cents : null;
+      const discC = disc.ok ? disc.cents : null;
+      const discount = disc.ok ? discountReview(discC, avail.ok ? avail.cents : null, balanceC)
+        : { status: DISCOUNT_STATUS.REVIEW, reason: disc.reason };
+
+      const out = {
+        id: r.id === undefined ? null : r.id, lineNo: r.lineNo === undefined ? null : r.lineNo, raw: r.raw || '',
+        page: r.page === undefined ? null : r.page, lineIndex: r.lineIndex === undefined ? null : r.lineIndex,
+        invoice: r.invoice || '', type: r.type || '', date: r.date || '',
+        originalAmount: dollars(orig.ok ? orig.cents : null),
+        invoiceAmountRemaining: dollars(balanceC),
+        discountAvailable: dollars(avail.ok ? avail.cents : null),
+        discountTaken: dollars(discC),
+        requestedAmount: dollars(requested.ok ? requested.cents : null),
+        cashAllotted: null, applicationAmount: null, unappliedAmount: null, shortAmount: null,
+        remainingInvoiceBalance: null, invoiceDifference: null,
+        applicationKind: kind, safetyStatus: write.safetyStatus,
+        reconStatus: '', discountStatus: discount.status, needsReview: false, remarks: '', reasons: [],
+        write
+      };
+
+      if (kind === APPLICATION_KIND.NONE) {
+        out.reconStatus = RECON_STATUS.NOT_APPLIED;
+        out.remarks = write.note || 'Not applied';
+        calcs[i] = { counted: false, held: requested.ok ? requested.cents : 0 };
+        return out;
+      }
+      const problems = [];
+      if (!balance.ok) problems.push(balance.reason);
+      if (!requested.ok) problems.push(requested.reason);
+      if (!disc.ok) problems.push(disc.reason);
+      else if (balance.ok && discC > balanceC) problems.push(`Disc. Taken ${usd(discC)} exceeds the balance ${usd(balanceC)}`);
+      if (problems.length) {
+        Object.assign(out, { reconStatus: RECON_STATUS.NEEDS_REVIEW, needsReview: true, remarks: problems.join('; '), reasons: problems });
+        calcs[i] = { counted: false, held: requested.ok ? requested.cents : 0 };
+        return out;
+      }
+
+      const absorbable = Math.min(requested.cents, balanceC - discC);
+      const share = cashLeft === null ? requested.cents : Math.min(requested.cents, cashLeft);
+      if (cashLeft !== null) cashLeft -= share;
+      const applied = Math.min(share, absorbable);
+      const unapplied = share - applied;
+      const short = absorbable - applied;
+      const remaining = balanceC - applied - discC;
+      Object.assign(out, {
+        cashAllotted: dollars(share), applicationAmount: dollars(applied), unappliedAmount: dollars(unapplied),
+        shortAmount: dollars(short), remainingInvoiceBalance: dollars(remaining), invoiceDifference: dollars(applied + discC - balanceC)
+      });
+      calcs[i] = { counted: true, held: 0, balance: balanceC, discount: discC, applied, unapplied, short, remaining };
+
+      if (short > 0) {
+        out.reconStatus = RECON_STATUS.SHORT_PAYMENT;
+        out.remarks = `Partial/Short payment – ${usd(remaining)} remains open (Payment Received ${usd(short)} short)`;
+      } else if (unapplied > 0) {
+        out.reconStatus = RECON_STATUS.OVERPAYMENT;
+        out.remarks = `Overpayment – ${usd(unapplied)} unapplied`;
+      } else if (remaining > 0) {
+        out.reconStatus = RECON_STATUS.PARTIAL_APPLICATION;
+        out.remarks = `Partial/Short payment – ${usd(remaining)} remains open`;
+      } else {
+        out.reconStatus = RECON_STATUS.EXACT;
+        out.remarks = discC ? `No variance – settled with ${usd(discC)} discount` : 'No variance';
+      }
+      if (discount.status === DISCOUNT_STATUS.REVIEW) {
+        out.needsReview = true;
+        out.reasons = [discount.reason];
+        out.remarks += `; ${discount.reason}`;
+      }
+      return out;
+    });
+
+    let unmatchedC = 0;
+    const unmatched = (src.unmatched || []).map(u => {
+      const amount = moneyCents(u.amount, 'Amount');
+      const discount = moneyCents(u.discount, 'Discount');
+      if (amount.ok) unmatchedC += amount.cents;
+      return {
+        lineNo: u.lineNo === undefined ? null : u.lineNo, raw: u.raw || '', invoice: u.invoice || '',
+        statedAmount: dollars(amount.ok ? amount.cents : null), statedDiscount: dollars(discount.ok ? discount.cents : null), applicationAmount: 0,
+        safetyStatus: u.safetyStatus || '', reconStatus: RECON_STATUS.UNMATCHED, needsReview: true,
+        remarks: u.reason || 'No matching invoice row'
+      };
+    });
+
+    const counted = calcs.filter(c => c.counted);
+    const sum = (list, f) => list.reduce((s, x) => s + f(x), 0);
+    const totalInvoiceBalanceC = sum(counted, c => c.balance);
+    const totalAppliedC = sum(counted, c => c.applied);
+    const totalDiscountsC = sum(counted, c => c.discount);
+    const shortC = sum(counted, c => c.short);
+    const rowExcessC = sum(counted, c => c.unapplied);
+    const heldC = sum(calcs, c => c.held);
+    const notApplied = rows.filter(r => r.reconStatus === RECON_STATUS.NOT_APPLIED);
+    const review = rows.filter(r => r.needsReview);
+
+    const remainingC = sum(counted, c => c.remaining);
+    let unappliedC = null, overpaymentC = null, cashVarianceC = null;
+    if (cash.ok) {
+      unappliedC = cash.cents - totalAppliedC;
+      overpaymentC = rowExcessC + Math.max(0, cashLeft - unmatchedC - heldC);
+      cashVarianceC = cash.cents - totalAppliedC - unappliedC;
+    }
+
+    // Cash reconciliation: where the cash received went. Open invoice balances do not affect it.
+    const cashReasons = [];
+    let cashStatus, cashRemarks;
+    if (!cash.ok) {
+      cashReasons.push(cash.reason);
+    } else if (shortC > 0 && overpaymentC > 0) {
+      cashReasons.push('Short and over at the same time');
+    } else if (unappliedC > overpaymentC) {
+      cashReasons.push(`${usd(unappliedC - overpaymentC)} unapplied belongs to lines that matched no invoice or were not applied`);
+    }
+    if (cashReasons.length) {
+      cashStatus = RECON_STATUS.NEEDS_REVIEW;
+      cashRemarks = cashReasons.join('; ');
+    } else if (shortC > 0) {
+      cashStatus = RECON_STATUS.SHORT_PAYMENT;
+      cashRemarks = `Partial/Short payment – Payment Received ${usd(shortC)} short`;
+    } else if (overpaymentC > 0) {
+      cashStatus = RECON_STATUS.OVERPAYMENT;
+      cashRemarks = `Overpayment – ${usd(overpaymentC)} unapplied`;
+    } else {
+      cashStatus = RECON_STATUS.EXACT;
+      cashRemarks = 'No variance';
+    }
+
+    const reasons = cashReasons.slice();
+    if (review.length) reasons.push(`${review.length} invoice row${review.length === 1 ? '' : 's'} need review`);
+    if (notApplied.length) reasons.push(`${notApplied.length} matched row${notApplied.length === 1 ? ' is' : 's are'} not applied`);
+    if (unmatched.length) reasons.push(`${unmatched.length} line${unmatched.length === 1 ? '' : 's'} matched no invoice`);
+
+    let status, remarks;
+    if (!rows.length && !unmatched.length) {
+      status = RECON_STATUS.NO_APPLICATIONS;
+      remarks = 'Nothing to reconcile';
+    } else if (reasons.length) {
+      status = RECON_STATUS.NEEDS_REVIEW;
+      remarks = reasons.join('; ');
+    } else {
+      status = cashStatus;
+      remarks = cashRemarks;
+    }
+
+    const countBy = (list, key) => list.reduce((m, x) => { m[x[key]] = (m[x[key]] || 0) + 1; return m; }, {});
+    const summary = {
+      status, remarks, reasons,
+      // Cash reconciliation
+      cashInputStatus, cashStatus, cashRemarks,
+      actualCashReceived: dollars(cash.ok ? cash.cents : null),
+      totalApplied: dollars(totalAppliedC),
+      unappliedAmount: dollars(unappliedC),
+      cashVariance: dollars(cashVarianceC),
+      shortPaymentAmount: dollars(shortC),
+      overpaymentAmount: dollars(overpaymentC),
+      // Invoice reconciliation
+      totalInvoices: counted.length,
+      totalInvoiceBalance: dollars(totalInvoiceBalanceC),
+      totalDiscounts: dollars(totalDiscountsC),
+      remainingInvoiceBalance: dollars(remainingC),
+      invoiceVariance: dollars(totalAppliedC + totalDiscountsC - totalInvoiceBalanceC),
+      // Exceptions and counts
+      unmatchedCount: unmatched.length,
+      unmatchedAmount: dollars(unmatchedC),
+      notAppliedCount: notApplied.length,
+      needsReviewCount: review.length,
+      newApplicationCount: rows.filter(r => r.applicationKind === APPLICATION_KIND.NEW).length,
+      existingApplicationCount: rows.filter(r => r.applicationKind === APPLICATION_KIND.EXISTING).length,
+      byStatus: countBy(rows.concat(unmatched), 'reconStatus')
+    };
+
+    return { rows, unmatched, summary };
+  }
+
+  /* ---------- Payment Received ---------- */
+  // Payment Received is ApplyFast's own field for the cash actually received from the customer, and the
+  // single source of the cash amount. It is required: without a valid amount Apply is blocked. Apply
+  // enters it as NetSuite's Payment Amount; it is never read from NetSuite.
+
+  /**
+   * Payment Received text -> { status: 'EMPTY' | 'VALID' | 'INVALID', value, reason, actualCashReceived }.
+   * actualCashReceived is what analyzeApplication receives: null when empty, the amount when valid,
+   * and the text as entered when invalid, so the analysis reports INVALID instead of using zero.
+   */
+  function parsePaymentReceived(input) {
+    const text = String(input == null ? '' : input).trim();
+    if (!text) return { status: 'EMPTY', value: null, reason: '', actualCashReceived: null };
+    if (/^\$?\s*-/.test(text)) return { status: 'INVALID', value: null, reason: 'Payment Received cannot be negative', actualCashReceived: text };
+    const parsed = parseAmountStrict(text);
+    if (!parsed.ok) return { status: 'INVALID', value: null, reason: parsed.reason, actualCashReceived: text };
+    return { status: 'VALID', value: parsed.value, reason: '', actualCashReceived: parsed.value };
+  }
+
+  /**
+   * The analyzeApplication input for a Preview (a scan, or matchLoadedPage's one-page scan). One row per plan item, in plan order, with
+   * the read-only details of its scanned row; one unmatched entry per input line that was not planned
+   * (not found, partial or multiple match, held across pages, invalid or duplicate).
+   * Reads only: the match, the plan, its items and the scan are not modified.
+   */
+  function multiPlanAnalysisInput({ match, plan, items, scan, invalid, actualCashReceived }) {
+    const rows = (items || []).map(it => {
+      const page = scan && scan.pages.get(it.pageStart);
+      const row = (page && page.rows.find(r => r.lineIndex === it.lineIndex)) || {};
+      return {
+        id: it.id, lineNo: it.lineNo, raw: it.raw, page: it.pageStart, lineIndex: it.lineIndex, invoice: it.ref, type: it.type,
+        date: row.date, originalAmount: row.origAmt, invoiceAmountRemaining: row.amtDue, discountAvailable: row.discAvail,
+        requestedAmount: it.payment, discountTaken: it.discount,
+        write: { willWrite: it.willWrite, safetyStatus: it.state.status, overwrite: it.overwrite, note: it.note }
+      };
+    });
+    const entries = new Map(((match && match.results) || []).map(r => [r.entry.lineNo, r.entry]));
+    const line = (s, entry) => ({
+      lineNo: s.lineNo, raw: s.raw, invoice: entry.ref || '', amount: entry.payment === undefined ? null : entry.payment,
+      discount: entry.discount === undefined ? null : entry.discount, safetyStatus: s.status || '', reason: s.reason || ''
+    });
+    const notPlanned = ((plan && plan.skipped) || []).concat((plan && plan.held) || []).map(s => line(s, entries.get(s.lineNo) || {}));
+    const unmatched = notPlanned.concat((invalid || []).map(e => line(e, e))).sort((a, b) => a.lineNo - b.lineNo);
+    return { rows, unmatched, actualCashReceived: actualCashReceived === undefined ? null : actualCashReceived };
+  }
+
+  /**
+   * The final write plan of a Preview (either mode), limited by Payment Received.
+   * input: { match, plan, items, scan, invalid, actualCashReceived } as for multiPlanAnalysisInput.
+   * Returns { cashInputStatus, applyBlocked, blockedReason, items, analysis }:
+   *   NOT_PROVIDED  Apply is blocked until Payment Received is entered (it is required); items are
+   *                 unchanged copies.
+   *   INVALID       Apply is blocked until Payment Received is corrected; items are unchanged copies.
+   *   OK            every item that will be written carries analysis.applicationAmount as its payment
+   *                 (requested, balance less discount and remaining cash, in plan order), with the plan's
+   *                 amount kept as requestedAmount. A row with no cash left or no application amount is
+   *                 not written. Nothing becomes writable that the plan does not write, and a line whose
+   *                 rows cannot all be written writes none of them (the analysis is then repeated without
+   *                 that line, so its cash stays unapplied instead of moving to it).
+   * The plan items are never modified; analysis is the analysis of the returned write plan.
+   */
+  function buildCashWritePlan(input) {
+    const src = input || {};
+    const items = src.items || [];
+    const copy = it => Object.assign({}, it);
+    const held = new Map();
+    for (;;) {
+      const masked = items.map(it => (it.willWrite && held.has(it.lineNo) ? Object.assign(copy(it), { willWrite: false, cashHeld: true, note: held.get(it.lineNo) }) : it));
+      const analysis = analyzeApplication(multiPlanAnalysisInput(Object.assign({}, src, { items: masked })));
+      const status = analysis.summary.cashInputStatus;
+      if (status !== 'OK') {
+        return {
+          cashInputStatus: status, applyBlocked: true,
+          blockedReason: status === 'INVALID' ? 'Correct Payment Received before applying' : 'Enter Payment Received before applying',
+          items: items.map(copy), analysis
+        };
+      }
+      const byId = new Map(analysis.rows.map(r => [r.id, r]));
+      const out = masked.map(it => {
+        if (!it.willWrite) return copy(it);
+        const row = byId.get(it.id);
+        const amount = row ? row.applicationAmount : null;
+        if (amount === null) return Object.assign(copy(it), { willWrite: false, cashHeld: true, note: `Not written: ${row ? row.remarks : 'no analysis'}` });
+        if (cents(amount) <= 0) return Object.assign(copy(it), { willWrite: false, cashHeld: true, note: 'Not written: no Payment Received left for this row' });
+        return Object.assign(copy(it), { payment: amount, requestedAmount: it.payment, cashLimited: cents(amount) !== cents(it.payment) });
+      });
+      let changed = false;
+      out.forEach((it, i) => {
+        if (!masked[i].willWrite || it.willWrite || held.has(it.lineNo)) return;
+        const siblings = out.filter((o, k) => o.lineNo === it.lineNo && k !== i && o.willWrite);
+        if (siblings.length) {
+          held.set(it.lineNo, `Not written: another row of line ${it.lineNo} cannot be written with the Payment Received; none of this line's rows written`);
+          changed = true;
+        }
+      });
+      if (!changed) return { cashInputStatus: status, applyBlocked: false, blockedReason: '', items: out, analysis };
+    }
+  }
+
+  /* ---------- Review & Reconciliation results ---------- */
+  const EXCEPTION_STATUSES = [RECON_STATUS.SHORT_PAYMENT, RECON_STATUS.OVERPAYMENT, RECON_STATUS.NEEDS_REVIEW, RECON_STATUS.NOT_APPLIED, RECON_STATUS.UNMATCHED];
+  const isReconException = r => r.needsReview || EXCEPTION_STATUSES.includes(r.reconStatus);
+  // Shown to users as one "Partial/Short payment" finding: less was applied than the invoice balance.
+  const isPartialShort = r => r.reconStatus === RECON_STATUS.PARTIAL_APPLICATION || r.reconStatus === RECON_STATUS.SHORT_PAYMENT;
+
+  // The remittance line as the report shows it: Payment, Discount and Gross Payment (payment + discount).
+  function remittanceAmounts(payment, discount) {
+    if (payment === null || payment === undefined) return { gross: null, discount: null, payment: null };
+    const discC = discount ? cents(discount) : 0;
+    return { gross: dollars(cents(payment) + discC), discount: dollars(discC), payment };
+  }
+
+  /**
+   * The report's Difference for a result row (the Cash Application Report template), kept apart from
+   * invoiceDifference: the amount of the row's cash exception, signed as in the template.
+   *   EXACT                                    0
+   *   OVERPAYMENT                              - unappliedAmount (cash beyond the balance, left unapplied)
+   *   PARTIAL_APPLICATION / SHORT_PAYMENT      + remainingInvoiceBalance (balance left open)
+   *   UNMATCHED                                - the line's amount (unidentified cash); null without one
+   *   NOT_APPLIED / NEEDS_REVIEW               null: nothing was applied, so there is no difference to
+   *                                            report; the row is listed as a review finding instead.
+   */
+  function reportDifference(r) {
+    const neg = v => (v === null || v === undefined ? null : dollars(-cents(v)));
+    if (r.reconStatus === RECON_STATUS.EXACT) return 0;
+    if (r.reconStatus === RECON_STATUS.OVERPAYMENT) return neg(r.unappliedAmount);
+    if (isPartialShort(r)) return r.remainingInvoiceBalance;
+    if (r.reconStatus === RECON_STATUS.UNMATCHED) return neg(r.requestedAmount);
+    return null;
+  }
+
+  /**
+   * Report figures over the result rows, all taken from reportDifference and the row amounts:
+   * exceptions { overpayment, unmatched, partialShort, total } (sums of reportDifference), reviewFindings
+   * (matched rows not applied or needing review), exceptionCount, and totals of every report column.
+   */
+  function reportSummary(rows) {
+    const sumC = (list, f) => dollars(list.reduce((s, r) => { const v = f(r); return v === null || v === undefined ? s : s + cents(v); }, 0));
+    const diff = list => sumC(list, r => r.reportDifference);
+    const by = status => rows.filter(r => r.reconStatus === status);
+    return {
+      exceptions: {
+        overpayment: diff(by(RECON_STATUS.OVERPAYMENT)),
+        unmatched: diff(by(RECON_STATUS.UNMATCHED)),
+        partialShort: diff(rows.filter(isPartialShort)),
+        total: diff(rows)
+      },
+      reviewFindings: rows.filter(r => r.rowType === 'INVOICE' && (r.needsReview || r.reconStatus === RECON_STATUS.NOT_APPLIED || r.reconStatus === RECON_STATUS.NEEDS_REVIEW)).length,
+      exceptionCount: rows.filter(r => r.exception).length,
+      totals: {
+        gross: sumC(rows, r => r.remittance.gross),
+        discount: sumC(rows, r => r.remittance.discount),
+        payment: sumC(rows, r => r.remittance.payment),
+        originalAmount: sumC(rows, r => r.originalAmount),
+        invoiceAmountRemaining: sumC(rows, r => r.invoiceAmountRemaining),
+        applicationAmount: sumC(rows, r => r.applicationAmount),
+        discountTaken: sumC(rows, r => r.appliedDiscount),
+        remainingInvoiceBalance: sumC(rows, r => r.remainingInvoiceBalance),
+        reportDifference: diff(rows)
+      }
+    };
+  }
+
+  // Presentation filters over the result rows, in display order. Filtering never changes what Apply writes.
+  const RESULT_FILTERS = Object.freeze([
+    { key: 'ALL', label: 'All', test: () => true },
+    { key: 'WILL_WRITE', label: 'Will apply', test: r => r.write.willWrite },
+    { key: 'EXCEPTIONS', label: 'Exceptions', test: isReconException },
+    { key: 'EXACT', label: 'Exact', test: r => r.reconStatus === RECON_STATUS.EXACT },
+    { key: 'PARTIAL_SHORT', label: 'Partial/Short payment', test: isPartialShort },
+    { key: 'OVERPAYMENT', label: 'Overpayment', test: r => r.reconStatus === RECON_STATUS.OVERPAYMENT },
+    { key: 'NOT_APPLIED', label: 'Not applied', test: r => r.reconStatus === RECON_STATUS.NOT_APPLIED },
+    { key: 'UNMATCHED', label: 'Unmatched', test: r => r.reconStatus === RECON_STATUS.UNMATCHED },
+    { key: 'NEEDS_REVIEW', label: 'Needs review', test: r => r.needsReview || r.reconStatus === RECON_STATUS.NEEDS_REVIEW },
+    { key: 'ALREADY_APPLIED', label: 'Already applied', test: r => r.safetyStatus === 'ALREADY_APPLIED' }
+  ].map(f => Object.freeze(f)));
+
+  /**
+   * The Review & Reconciliation results of a Preview (This page only or All pages): one normalized row
+   * per planned invoice row (plan order) followed by one per unmatched input line (line order), and the
+   * analysis summary. Consumes buildCashWritePlan's output and nothing else; inputs are not modified.
+   *   rows[].rowType          'INVOICE' or 'UNMATCHED'
+   *   rows[].write            the final write plan's decision for the row: { willWrite, safetyStatus, overwrite,
+   *                           overwritable, note, cashLimited, cashHeld, payment, discount } (payment and discount
+   *                           are what Apply writes, null when not written). Unmatched rows are never written.
+   *   rows[].reference        the remittance reference alone (remittanceReference): no amounts or separators
+   *   rows[].remittance       { gross, discount, payment } of the input line (remittanceAmounts)
+   *   rows[].appliedDiscount  the discount of the NetSuite application; null when nothing is applied
+   *   rows[].reportDifference the report's Difference (reportDifference); invoiceDifference is unchanged
+   *   summary.report          reportSummary(rows): exception figures and column totals for the report
+   * Amounts and statuses are analyzeApplication's, so applicationAmount of a written row equals the
+   * Payment Apply writes. filterCounts holds the number of rows each RESULT_FILTERS entry shows.
+   */
+  function buildReconciliationResults(writePlan) {
+    const src = writePlan || {};
+    const analysis = src.analysis || { rows: [], unmatched: [], summary: {} };
+    const items = new Map((src.items || []).map(it => [it.id, it]));
+    const invoiceRows = analysis.rows.map(r => {
+      const it = items.get(r.id) || {};
+      const state = it.state || {};
+      const row = Object.assign({ rowType: 'INVOICE' }, r, {
+        reasons: r.reasons.slice(),
+        write: {
+          willWrite: !!it.willWrite, safetyStatus: state.status || r.safetyStatus, overwrite: !!it.overwrite,
+          overwritable: !!state.overwritable, note: it.note || '', cashLimited: !!it.cashLimited, cashHeld: !!it.cashHeld,
+          payment: it.willWrite ? it.payment : null, discount: it.willWrite ? (it.discount || null) : null
+        }
+      });
+      row.exception = isReconException(row);
+      row.reference = remittanceReference(row.raw);
+      row.remittance = remittanceAmounts(row.requestedAmount, row.discountTaken);
+      row.appliedDiscount = row.applicationAmount === null ? null : row.discountTaken;
+      row.reportDifference = reportDifference(row);
+      return row;
+    });
+    const unmatchedRows = analysis.unmatched.map(u => {
+      const row = {
+        rowType: 'UNMATCHED', id: null, lineNo: u.lineNo, raw: u.raw, page: null, lineIndex: null, invoice: '', type: '', date: '',
+        originalAmount: null, invoiceAmountRemaining: null, discountAvailable: null, discountTaken: null,
+        requestedAmount: u.statedAmount, applicationAmount: 0, remainingInvoiceBalance: null, invoiceDifference: null,
+        cashAllotted: null, unappliedAmount: null, shortAmount: null,
+        applicationKind: APPLICATION_KIND.NONE, safetyStatus: u.safetyStatus, reconStatus: u.reconStatus,
+        discountStatus: DISCOUNT_STATUS.NONE, needsReview: u.needsReview, remarks: u.remarks, reasons: [u.remarks],
+        write: {
+          willWrite: false, safetyStatus: u.safetyStatus, overwrite: false, overwritable: false, note: u.remarks,
+          cashLimited: false, cashHeld: false, payment: null, discount: null
+        },
+        exception: true,
+        reference: remittanceReference(u.raw),
+        remittance: remittanceAmounts(u.statedAmount, u.statedDiscount),
+        appliedDiscount: null
+      };
+      row.reportDifference = reportDifference(row);
+      return row;
+    });
+    const rows = invoiceRows.concat(unmatchedRows);
+    const filterCounts = {};
+    RESULT_FILTERS.forEach(f => { filterCounts[f.key] = rows.filter(f.test).length; });
+    const summary = Object.assign({}, analysis.summary, {
+      reasons: (analysis.summary.reasons || []).slice(),
+      byStatus: Object.assign({}, analysis.summary.byStatus),
+      report: reportSummary(rows)
+    });
+    return {
+      cashInputStatus: src.cashInputStatus || summary.cashInputStatus || '', applyBlocked: !!src.applyBlocked,
+      blockedReason: src.blockedReason || '', rows, summary, filterCounts
+    };
+  }
+
+  // The rows a filter shows, as a new array; an unknown key shows every row. results is not modified.
+  function filterReconciliationResults(results, key) {
+    const filter = RESULT_FILTERS.find(f => f.key === key) || RESULT_FILTERS[0];
+    return ((results && results.rows) || []).filter(filter.test);
+  }
+
+  /**
+   * Results after Apply: the reconciliation rows with the outcome of each row's write and read-back.
+   * items are the applied write-plan items carrying result { status, reason } and actual values.
+   * Unmatched lines were never written: HELD for a line held across pages, SKIPPED otherwise.
+   * Result statuses stay separate from reconStatus. Returns { rows, counts }; inputs are not modified.
+   */
+  function reconciliationApplyResults(results, items) {
+    const byId = new Map((items || []).map(it => [it.id, it]));
+    const rows = ((results && results.rows) || []).map(r => {
+      if (r.rowType === 'UNMATCHED') {
+        const status = r.safetyStatus === 'CROSS_PAGE_GROUP' ? 'HELD' : 'SKIPPED';
+        return Object.assign({}, r, { result: { status, reason: r.remarks }, actual: null });
+      }
+      const it = byId.get(r.id) || {};
+      const result = it.result ? { status: it.result.status, reason: it.result.reason || '' } : { status: 'NOT_WRITTEN', reason: 'No Apply result' };
+      return Object.assign({}, r, { result, actual: it.actual ? Object.assign({}, it.actual) : null });
+    });
+    const counts = {};
+    rows.forEach(r => { counts[r.result.status] = (counts[r.result.status] || 0) + 1; });
+    return { rows, counts };
+  }
+
+  /* ---------- Excel reconciliation export ---------- */
+  const RECONCILIATION_EXPORT_FILE = 'ApplyFast-Reconciliation.xlsx';
+  const REPORT_TITLE = 'Cash Application Report';
+  const REPORT_BRAND = 'ApplyFast | NetSuite Cash Application Assistant';
+  const REPORT_GENERATED = 'Generated by ApplyFast  |  applyfast.store';
+  const REPORT_FOOTER = 'ApplyFast — Cash Application Report  |  applyfast.store';
+  const REPORT_NOTE = 'Generated from ApplyFast reconciliation results for review and documentation.';
+  const REPORT_URL = 'https://applyfast.store/';
+  // Report labels of a row's reconStatus and of its NetSuite write (write plan before Apply, result after).
+  const REPORT_STATUS_LABELS = Object.freeze({
+    EXACT: 'Exact', PARTIAL_APPLICATION: 'Partial/Short payment', SHORT_PAYMENT: 'Partial/Short payment', OVERPAYMENT: 'Overpayment',
+    NOT_APPLIED: 'Not applied', NEEDS_REVIEW: 'Needs review', UNMATCHED: 'Unmatched'
+  });
+  const REPORT_WRITE_LABELS = Object.freeze({
+    WILL_WRITE: 'Will apply', NOT_WRITTEN: 'Not written', NEVER_WRITTEN: 'Never written',
+    APPLIED: 'Applied', ADJUSTED: 'Adjusted', NOT_CONFIRMED: 'Not confirmed', CHANGED: 'Changed since Preview', MOVED: 'Row moved',
+    HELD: 'Held', BLOCKED: 'Blocked', ALREADY: 'Already applied', SKIPPED: 'Skipped', ERROR: 'Error while writing'
+  });
+  // A row that can never be written (unmatched, or matched without an amount) stays NEVER_WRITTEN after Apply too.
+  function reportWrite(r) {
+    if (r.rowType === 'UNMATCHED' || r.safetyStatus === 'UNPLANNABLE') return 'NEVER_WRITTEN';
+    if (r.result) return r.result.status;
+    return r.write && r.write.willWrite ? 'WILL_WRITE' : 'NOT_WRITTEN';
+  }
+  const reportLabel = (labels, key) => (key ? labels[key] || key : null);
+  // The report flags every Partial/Short payment finding (partial application or short payment) as an exception.
+  const reportException = r => !!(r.exception || isPartialShort(r));
+  // The Reconciliation sheet's detail columns (Cash Application Report template), in three groups:
+  // what the remittance says, what is applied in NetSuite, and what the review found.
+  const REPORT_COLUMNS = Object.freeze([
+    { group: 'REMITTANCE', header: 'Line', width: 6, format: 'rInt', value: r => r.lineNo },
+    { group: 'REMITTANCE', header: 'Reference', width: 18, format: 'rText', value: r => r.reference },
+    { group: 'REMITTANCE', header: 'Gross Payment', width: 13.5, format: 'rMoney', value: r => r.remittance && r.remittance.gross },
+    { group: 'REMITTANCE', header: 'Discount', width: 11, format: 'rMoney', value: r => r.remittance && r.remittance.discount },
+    { group: 'REMITTANCE', header: 'Payment', width: 13.5, format: 'rMoney', value: r => r.remittance && r.remittance.payment },
+    { group: 'NETSUITE APPLICATION', header: 'Invoice', width: 15, format: 'rText', value: r => r.invoice },
+    { group: 'NETSUITE APPLICATION', header: 'Original Amount', width: 13.5, format: 'rMoney', value: r => r.originalAmount },
+    { group: 'NETSUITE APPLICATION', header: 'Amount Due', width: 13.5, format: 'rMoney', value: r => r.invoiceAmountRemaining },
+    { group: 'NETSUITE APPLICATION', header: 'Applied', width: 12.5, format: 'rMoney', value: r => (r.rowType === 'UNMATCHED' ? null : r.applicationAmount) },
+    { group: 'NETSUITE APPLICATION', header: 'Discount Taken', width: 12.5, format: 'rMoney', value: r => r.appliedDiscount },
+    { group: 'NETSUITE APPLICATION', header: 'Remaining Balance', width: 14.5, format: 'rMoney', value: r => r.remainingInvoiceBalance },
+    { group: 'NETSUITE APPLICATION', header: 'Write', width: 13.5, format: 'rText', value: r => reportLabel(REPORT_WRITE_LABELS, reportWrite(r)) },
+    { group: 'REVIEW & ANALYSIS', header: 'Status', width: 19, format: 'rText', value: r => reportLabel(REPORT_STATUS_LABELS, r.reconStatus) },
+    { group: 'REVIEW & ANALYSIS', header: 'Difference\n(+ open / − unapplied)', width: 19, format: 'rMoney', kind: 'difference', value: r => r.reportDifference },
+    { group: 'REVIEW & ANALYSIS', header: 'Exception', width: 10.5, format: 'rText', kind: 'exception', value: r => (reportException(r) ? 'Yes' : 'No') },
+    {
+      group: 'REVIEW & ANALYSIS', header: 'Remarks', width: 44, format: 'rWrap',
+      value: r => (r.result && r.result.reason && r.result.reason !== r.remarks ? `${r.remarks}; Write: ${r.result.reason}` : r.remarks)
+    }
+  ].map(c => Object.freeze(c)));
+  const REPORT_HEADER_ROW = 11;
+  // The first column of each group, where the grid draws a group divider.
+  const REPORT_GROUP_STARTS = REPORT_COLUMNS.map((c, i) => (i === 0 || REPORT_COLUMNS[i - 1].group !== c.group ? i : -1)).filter(i => i >= 0);
+
+  // The report sheet: title, cash summary, exception tiles, grouped detail table, totals and footer.
+  // Every figure is copied from results (summary.report holds the exception figures and totals).
+  function reconciliationReportSheet(src, rows, applied) {
+    const s = src.summary || {};
+    const rep = s.report || { exceptions: {}, totals: {} };
+    const ex = rep.exceptions || {};
+    const tot = rep.totals || {};
+    const W = REPORT_COLUMNS.length;
+    const lines = [], merges = [], rowHeights = {}, hyperlinks = [];
+    const blankRow = () => new Array(W).fill(null);
+    const span = (row, from, to, value, format) => {
+      for (let c = from; c <= to; c++) row[c] = { value: c === from ? value : null, format };
+      if (to > from) merges.push(`${colName(from)}${lines.length + 1}:${colName(to)}${lines.length + 1}`);
+    };
+    const put = (row, height) => { lines.push(row); if (height) rowHeights[lines.length] = height; return lines.length; };
+    // Group dividers: a medium edge on the left of each group's first column and on the right of the last column.
+    const divided = row => row.map((cell, c) => {
+      const edge = REPORT_GROUP_STARTS.includes(c) ? ':gs' : c === W - 1 ? ':ge' : '';
+      return edge && cell && cell.format ? Object.assign({}, cell, { format: cell.format + edge }) : cell;
+    });
+    const blank = v => (v === undefined || v === '' ? null : v);
+    const cashText = { NOT_PROVIDED: 'Not entered', INVALID: 'Invalid' }[src.cashInputStatus || s.cashInputStatus];
+    const kpi = v => (blank(v) === null ? { value: cashText || 'n/a', format: 'kpiText' } : { value: v, format: 'kpiValue' });
+
+    let r = blankRow(); span(r, 0, W - 1, REPORT_TITLE, 'rTitle'); put(r, 34);
+    r = blankRow(); span(r, 0, 7, REPORT_BRAND, 'rBrand'); span(r, 8, W - 1, REPORT_GENERATED, 'rGenerated');
+    hyperlinks.push({ ref: `I${lines.length + 1}`, url: REPORT_URL }); put(r, 20);
+    r = blankRow(); span(r, 0, W - 1, `${applied ? 'After Apply' : 'Review before Apply'}  |  ${blank(s.remarks) || ''}`, 'rMeta'); put(r, 18);
+    r = blankRow(); span(r, 0, W - 1, 'CASH SUMMARY', 'rBar'); put(r, 20);
+    r = blankRow();
+    span(r, 0, 1, 'Payment Received', 'kpiLabel'); r[2] = kpi(s.actualCashReceived);
+    span(r, 4, 5, 'Total Applied', 'kpiLabel'); r[6] = kpi(s.totalApplied);
+    span(r, 8, 9, 'Unapplied', 'kpiLabel'); r[10] = kpi(s.unappliedAmount);
+    span(r, 12, 13, 'Cash Status', 'kpiLabel'); span(r, 14, W - 1, blank(s.cashRemarks), 'kpiNote');
+    put(r, 28);
+    put(blankRow(), 8);
+    r = blankRow(); span(r, 0, W - 1, 'EXCEPTIONS & REVIEW FINDINGS', 'rBarAlt'); put(r, 20);
+    r = blankRow();
+    span(r, 0, 1, 'Unapplied Overpayment', 'warnLabel'); r[2] = { value: blank(ex.overpayment), format: 'warnValue' };
+    span(r, 3, 4, 'Unmatched / Unidentified', 'badLabel'); r[5] = { value: blank(ex.unmatched), format: 'badValue' };
+    span(r, 6, 7, 'Partial/Short Payments', 'warnLabel'); r[8] = { value: blank(ex.partialShort), format: 'warnValue' };
+    span(r, 9, 10, 'Needs Review', 'reviewLabel'); r[11] = { value: blank(rep.reviewFindings), format: 'reviewValue' };
+    span(r, 12, 13, 'Total Exceptions', 'totalLabel'); span(r, 14, W - 1, blank(ex.total), 'totalValue');
+    put(r, 30);
+    put(blankRow(), 8);
+    r = blankRow();
+    let from = 0;
+    REPORT_COLUMNS.forEach((c, i) => {
+      if (i === W - 1 || REPORT_COLUMNS[i + 1].group !== c.group) { span(r, from, i, c.group, 'group'); from = i + 1; }
+    });
+    put(r, 20);
+    put(divided(REPORT_COLUMNS.map(c => ({ value: c.header, format: 'colHeader' }))), 32);
+    rows.forEach(row => {
+      put(divided(REPORT_COLUMNS.map(c => {
+        const value = blank(c.value(row));
+        if (c.kind === 'exception') return { value, format: reportException(row) ? 'rYes' : 'rNo' };
+        if (c.kind === 'difference' && value) return { value, format: 'rDiffFlag' };
+        if (c.format === 'rWrap' && reportException(row)) return { value, format: 'rWrapExc' };
+        return { value, format: c.format };
+      })));
+    });
+    const lastDetail = lines.length;
+    const totals = {
+      'Gross Payment': tot.gross, Discount: tot.discount, Payment: tot.payment, 'Original Amount': tot.originalAmount,
+      'Amount Due': tot.invoiceAmountRemaining, Applied: tot.applicationAmount, 'Discount Taken': tot.discountTaken,
+      'Remaining Balance': tot.remainingInvoiceBalance, difference: tot.reportDifference
+    };
+    r = blankRow(); span(r, 0, 1, 'TOTALS', 'totalsLabel');
+    REPORT_COLUMNS.forEach((c, i) => {
+      if (i < 2) return;
+      const v = c.kind === 'difference' ? totals.difference : totals[c.header];
+      r[i] = { value: blank(v), format: v === null || v === undefined ? 'totalsCell' : 'totalsMoney' };
+    });
+    put(divided(r), 22);
+    put(blankRow(), 10);
+    r = blankRow(); span(r, 0, W - 1, REPORT_FOOTER, 'footer'); hyperlinks.push({ ref: `A${lines.length + 1}`, url: REPORT_URL }); put(r, 18);
+    r = blankRow(); span(r, 0, W - 1, REPORT_NOTE, 'footerNote'); put(r, 14);
+
+    return {
+      name: 'Reconciliation', header: false, rows: lines, merges, rowHeights, hyperlinks, showGridLines: false,
+      columns: REPORT_COLUMNS.map(c => ({ header: c.header, width: c.width, format: c.format })),
+      freezeRows: REPORT_HEADER_ROW,
+      autoFilterRef: `A${REPORT_HEADER_ROW}:${colName(W - 1)}${Math.max(lastDetail, REPORT_HEADER_ROW)}`,
+      printArea: `A1:${colName(W - 1)}${lines.length}`,
+      printTitles: `${REPORT_HEADER_ROW - 1}:${REPORT_HEADER_ROW}`,
+      pageSetup: { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, margins: { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.2, footer: 0.2 } }
+    };
+  }
+
+  /**
+   * The Excel reconciliation report of a Review & Reconciliation result, as plain data.
+   * results  buildReconciliationResults output: always exported in full (UI filters do not apply).
+   * applied  optional reconciliationApplyResults output after Apply; its rows (same rows, same order)
+   *          add the write result of each row, kept apart from the reconciliation status.
+   * One sheet, Reconciliation (the Cash Application Report): cash summary, exception tiles and one row per
+   * result row in three column groups (REMITTANCE, NETSUITE APPLICATION, REVIEW & ANALYSIS).
+   * Returns { fileName, sheets: [{ name, columns: [{ header, width, format }], header, freezeRows, autoFilterRef,
+   * rows: [[cell]], merges, rowHeights, hyperlinks, printArea, printTitles, pageSetup, showGridLines }] } where a
+   * cell is a value (null = blank) in its column's format, or { value, format } to override it. Every figure is
+   * copied from results; nothing is recalculated.
+   */
+  function buildReconciliationExport(results, applied) {
+    const src = results || {};
+    const rows = applied && applied.rows ? applied.rows : (src.rows || []);
+    return { fileName: RECONCILIATION_EXPORT_FILE, sheets: [reconciliationReportSheet(src, rows, applied)] };
+  }
+
+  // Minimal XLSX (Office Open XML) writer for buildReconciliationExport models: inline strings,
+  // numeric cells, named cell styles, merged cells, row heights, frozen rows, an autofilter,
+  // hyperlinks and print setup, in an uncompressed ZIP.
+  // Pure: returns the file bytes (Uint8Array); the same model always gives the same bytes.
+  const NAVY = '17324D', TEAL = '2F6B8A', SLATE = '536575', INK = '1F2933', MIST = 'F4F6F8', ICE = 'EAF2F7';
+  const AMBER_BG = 'FFF4D6', AMBER = '8A5A00', RED_BG = 'FCE8E8', RED = 'A32929', GREEN_BG = 'E8F5EC', GREEN = '216E3A', WHITE = 'FFFFFF';
+  // Cell styles by name: font { b, i, u, sz, color }, fill, border (thin bottom, all thin, medium box, medium top),
+  // num ('money' #,##0.00 or 'integer'), align { h, v, wrap }. The first seven keep the order of earlier exports.
+  const XLSX_STYLE_SPECS = [
+    ['text', { align: { v: 'top' } }],
+    ['header', { font: { b: 1 }, fill: 'F2F2F2', border: 'bottom', align: { v: 'top', wrap: 1 } }],
+    ['money', { num: 'money', align: { v: 'top' } }],
+    ['integer', { num: 'integer', align: { h: 'right', v: 'top' } }],
+    ['title', { font: { b: 1, sz: 14 } }],
+    ['section', { font: { b: 1 }, border: 'bottom' }],
+    ['wrap', { align: { v: 'top', wrap: 1 } }],
+    ['rTitle', { font: { b: 1, sz: 20, color: WHITE }, fill: NAVY, align: { v: 'center', indent: 1 } }],
+    ['rBrand', { font: { b: 1, sz: 12, color: TEAL }, align: { v: 'center' } }],
+    ['rGenerated', { font: { sz: 10, color: TEAL, u: 1 }, align: { h: 'right', v: 'center' } }],
+    ['rMeta', { font: { sz: 9, color: SLATE }, align: { v: 'center' } }],
+    ['rBar', { font: { b: 1, sz: 12, color: WHITE }, fill: TEAL, align: { v: 'center', indent: 1 } }],
+    ['rBarAlt', { font: { b: 1, sz: 12, color: WHITE }, fill: SLATE, align: { v: 'center', indent: 1 } }],
+    ['kpiLabel', { font: { b: 1, sz: 11, color: SLATE }, fill: MIST, border: 'all', align: { v: 'center', wrap: 1 } }],
+    ['kpiValue', { font: { b: 1, sz: 12, color: INK }, fill: ICE, border: 'all', num: 'money', align: { h: 'right', v: 'center' } }],
+    ['kpiText', { font: { b: 1, sz: 11, color: SLATE }, fill: ICE, border: 'all', align: { h: 'right', v: 'center' } }],
+    ['kpiNote', { font: { sz: 10, color: INK }, fill: ICE, border: 'all', align: { v: 'center', wrap: 1 } }],
+    ['warnLabel', { font: { b: 1, sz: 11, color: AMBER }, fill: AMBER_BG, align: { v: 'center', wrap: 1 } }],
+    ['warnValue', { font: { b: 1, sz: 12, color: AMBER }, fill: AMBER_BG, num: 'money', align: { h: 'right', v: 'center' } }],
+    ['badLabel', { font: { b: 1, sz: 11, color: RED }, fill: RED_BG, align: { v: 'center', wrap: 1 } }],
+    ['badValue', { font: { b: 1, sz: 12, color: RED }, fill: RED_BG, num: 'money', align: { h: 'right', v: 'center' } }],
+    ['reviewLabel', { font: { b: 1, sz: 11, color: SLATE }, fill: MIST, align: { v: 'center', wrap: 1 } }],
+    ['reviewValue', { font: { b: 1, sz: 12, color: SLATE }, fill: MIST, num: 'integer', align: { h: 'right', v: 'center' } }],
+    ['totalLabel', { font: { b: 1, sz: 11, color: WHITE }, fill: NAVY, align: { v: 'center', wrap: 1 } }],
+    ['totalValue', { font: { b: 1, sz: 12, color: WHITE }, fill: NAVY, num: 'money', align: { h: 'right', v: 'center' } }],
+    ['group', { font: { b: 1, sz: 11, color: WHITE }, fill: NAVY, border: 'box', align: { h: 'center', v: 'center' } }],
+    ['colHeader', { font: { b: 1, sz: 10, color: INK }, fill: MIST, border: 'all', align: { h: 'center', v: 'center', wrap: 1 } }],
+    ['rText', { font: { sz: 10, color: INK }, border: 'bottom', align: { v: 'center' } }],
+    ['rInt', { font: { sz: 10, color: INK }, border: 'bottom', num: 'integer', align: { h: 'center', v: 'center' } }],
+    ['rMoney', { font: { sz: 10, color: INK }, border: 'bottom', num: 'money', align: { h: 'right', v: 'center' } }],
+    ['rWrap', { font: { sz: 10, color: INK }, border: 'bottom', align: { v: 'center', wrap: 1 } }],
+    ['rWrapExc', { font: { sz: 10, color: RED }, border: 'bottom', align: { v: 'center', wrap: 1 } }],
+    ['rDiffFlag', { font: { b: 1, sz: 10, color: AMBER }, fill: AMBER_BG, border: 'bottom', num: 'money', align: { h: 'right', v: 'center' } }],
+    ['rYes', { font: { b: 1, sz: 10, color: RED }, fill: RED_BG, border: 'bottom', align: { h: 'center', v: 'center' } }],
+    ['rNo', { font: { sz: 10, color: GREEN }, fill: GREEN_BG, border: 'bottom', align: { h: 'center', v: 'center' } }],
+    ['totalsLabel', { font: { b: 1, sz: 11, color: WHITE }, fill: NAVY, border: 'top', align: { v: 'center', indent: 1 } }],
+    ['totalsMoney', { font: { b: 1, sz: 10, color: INK }, fill: ICE, border: 'top', num: 'money', align: { h: 'right', v: 'center' } }],
+    ['totalsCell', { font: { b: 1, sz: 10, color: INK }, fill: ICE, border: 'top', align: { v: 'center' } }],
+    ['footer', { font: { b: 1, sz: 10, color: TEAL, u: 1 }, align: { v: 'center' } }],
+    ['footerNote', { font: { i: 1, sz: 8, color: SLATE }, align: { v: 'center' } }]
+  ];
+  // Report grid styles with a group divider: ':gs' adds a medium left edge (a group's first column),
+  // ':ge' a medium right edge (the last column).
+  ['colHeader', 'rText', 'rInt', 'rMoney', 'rWrap', 'rWrapExc', 'rDiffFlag', 'rYes', 'rNo', 'totalsLabel', 'totalsMoney', 'totalsCell'].forEach(name => {
+    const spec = XLSX_STYLE_SPECS.find(([n]) => n === name)[1];
+    ['gs', 'ge'].forEach(edge => XLSX_STYLE_SPECS.push([`${name}:${edge}`, Object.assign({}, spec, { border: `${spec.border}:${edge}` })]));
+  });
+  const XLSX_STYLES = {};
+  XLSX_STYLE_SPECS.forEach(([name], i) => { XLSX_STYLES[name] = i; });
+  const thinSide = color => ({ style: 'thin', color }), mediumSide = { style: 'medium', color: NAVY };
+  const BORDER_SPECS = {
+    none: {},
+    bottom: { bottom: thinSide('D5DBE1') },
+    all: { left: thinSide('C9D1D9'), right: thinSide('C9D1D9'), top: thinSide('C9D1D9'), bottom: thinSide('C9D1D9') },
+    box: { left: mediumSide, right: mediumSide, top: mediumSide, bottom: mediumSide },
+    top: { top: mediumSide, bottom: mediumSide }
+  };
+  ['bottom', 'all', 'top'].forEach(k => {
+    BORDER_SPECS[`${k}:gs`] = Object.assign({}, BORDER_SPECS[k], { left: mediumSide });
+    BORDER_SPECS[`${k}:ge`] = Object.assign({}, BORDER_SPECS[k], { right: mediumSide });
+  });
+  const XLSX_BORDERS = {};
+  Object.keys(BORDER_SPECS).forEach(k => {
+    const b = BORDER_SPECS[k];
+    XLSX_BORDERS[k] = '<border>' + ['left', 'right', 'top', 'bottom']
+      .map(s => (b[s] ? `<${s} style="${b[s].style}"><color rgb="FF${b[s].color}"/></${s}>` : `<${s}/>`)).join('') + '<diagonal/></border>';
+  });
+  // styles.xml for XLSX_STYLE_SPECS; fonts and fills are shared between styles that use the same one.
+  function stylesXml() {
+    const fonts = [], fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'];
+    const borders = Object.keys(XLSX_BORDERS);
+    const indexOf = (list, xml) => { let i = list.indexOf(xml); if (i < 0) { list.push(xml); i = list.length - 1; } return i; };
+    const fontXml = f => `<font>${f.b ? '<b/>' : ''}${f.i ? '<i/>' : ''}${f.u ? '<u/>' : ''}<sz val="${f.sz || 11}"/>` +
+      `${f.color ? `<color rgb="FF${f.color}"/>` : ''}<name val="Calibri"/></font>`;
+    indexOf(fonts, fontXml({}));
+    const xfs = XLSX_STYLE_SPECS.map(([, st]) => {
+      const fontId = indexOf(fonts, fontXml(st.font || {}));
+      const fillId = st.fill ? indexOf(fills, `<fill><patternFill patternType="solid"><fgColor rgb="FF${st.fill}"/><bgColor indexed="64"/></patternFill></fill>`) : 0;
+      const borderId = borders.indexOf(st.border || 'none');
+      const numFmtId = st.num === 'money' ? 164 : st.num === 'integer' ? 1 : 0;
+      const a = st.align || {};
+      const align = (a.h || a.v || a.wrap || a.indent)
+        ? `<alignment${a.h ? ` horizontal="${a.h}"` : ''}${a.v ? ` vertical="${a.v}"` : ''}${a.wrap ? ' wrapText="1"' : ''}${a.indent ? ` indent="${a.indent}"` : ''}/>` : '';
+      return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0"` +
+        `${numFmtId ? ' applyNumberFormat="1"' : ''}${fontId ? ' applyFont="1"' : ''}${fillId ? ' applyFill="1"' : ''}` +
+        `${borderId ? ' applyBorder="1"' : ''}${align ? ' applyAlignment="1"' : ''}>${align}</xf>`;
+    });
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00;-#,##0.00"/></numFmts>' +
+      `<fonts count="${fonts.length}">${fonts.join('')}</fonts><fills count="${fills.length}">${fills.join('')}</fills>` +
+      `<borders count="${borders.length}">${borders.map(b => XLSX_BORDERS[b]).join('')}</borders>` +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      `<cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs>` +
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  }
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function utf8(text) {
+    const out = [];
+    for (const ch of String(text)) {
+      let cp = ch.codePointAt(0);
+      if (cp < 0x80) out.push(cp);
+      else if (cp < 0x800) out.push(0xC0 | (cp >> 6), 0x80 | (cp & 63));
+      else if (cp < 0x10000) out.push(0xE0 | (cp >> 12), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+      else out.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+    }
+    return Uint8Array.from(out);
+  }
+  function zipStored(files) {
+    const parts = [], central = [];
+    let offset = 0;
+    const u16 = n => [n & 255, (n >>> 8) & 255];
+    const u32 = n => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+    // Fixed DOS time/date (1980-01-01 00:00) keeps the bytes deterministic.
+    const stamp = [...u16(0), ...u16(33)];
+    files.forEach(f => {
+      const name = utf8(f.name), data = utf8(f.text), crc = crc32(data);
+      const common = [...u16(20), ...u16(0x0800), ...u16(0), ...stamp, ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)];
+      const local = Uint8Array.from([...u32(0x04034B50), ...common, ...name]);
+      central.push(Uint8Array.from([...u32(0x02014B50), ...u16(20), ...common, ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset), ...name]));
+      parts.push(local, data);
+      offset += local.length + data.length;
+    });
+    const centralSize = central.reduce((n, c) => n + c.length, 0);
+    const end = Uint8Array.from([...u32(0x06054B50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0)]);
+    const all = parts.concat(central, [end]);
+    const out = new Uint8Array(all.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    all.forEach(p => { out.set(p, at); at += p.length; });
+    return out;
+  }
+  const xmlText = v => String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const colName = i => { let s = ''; for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
+  // The autofilter range of a sheet ('A1:S12'), or '' without one.
+  function sheetFilterRef(sheet) {
+    const cols = sheet.columns || [];
+    if (sheet.autoFilterRef) return sheet.autoFilterRef;
+    if (!sheet.autoFilter || !cols.length) return '';
+    return `A1:${colName(cols.length - 1)}${Math.max((sheet.rows || []).length + (sheet.header ? 1 : 0), 1)}`;
+  }
+  const absRef = ref => ref.split(':').map(p => p.replace(/^([A-Z]+)(\d+)$/, '$$$1$$$2')).join(':');
+  function sheetXml(sheet) {
+    const cols = sheet.columns || [];
+    const lines = (sheet.header ? [cols.map(c => ({ value: c.header, format: 'header' }))] : []).concat(sheet.rows || []);
+    const heights = sheet.rowHeights || {};
+    const rowsXml = lines.map((line, r) => {
+      const cells = line.map((cell, c) => {
+        const isObj = cell !== null && typeof cell === 'object';
+        const value = isObj ? cell.value : cell;
+        const ref = `${colName(c)}${r + 1}`;
+        if (value === null || value === undefined || value === '') {
+          // A styled blank keeps fills and borders across merged and empty report cells.
+          return isObj && cell.format ? `<c r="${ref}" s="${XLSX_STYLES[cell.format] || 0}"/>` : '';
+        }
+        const format = (isObj && cell.format) || (cols[c] && cols[c].format) || 'text';
+        const style = XLSX_STYLES[format] || 0;
+        if (typeof value === 'number' && Number.isFinite(value) && format !== 'header' && format !== 'colHeader') return `<c r="${ref}" s="${style}"><v>${value}</v></c>`;
+        return `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xmlText(value)}</t></is></c>`;
+      }).join('');
+      const ht = heights[r + 1];
+      return `<row r="${r + 1}"${ht ? ` ht="${ht}" customHeight="1"` : ''}>${cells}</row>`;
+    }).join('');
+    const frozen = sheet.freezeRows || (sheet.freezeHeader ? 1 : 0);
+    const viewAttrs = `${sheet.showGridLines === false ? ' showGridLines="0"' : ''} workbookViewId="0"`;
+    const view = frozen
+      ? `<sheetViews><sheetView${viewAttrs}><pane ySplit="${frozen}" topLeftCell="A${frozen + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
+      : `<sheetViews><sheetView${viewAttrs}/></sheetViews>`;
+    const setup = sheet.pageSetup;
+    const sheetPr = setup && setup.fitToWidth ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : '';
+    const widths = cols.length ? `<cols>${cols.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.width || 12}" customWidth="1"/>`).join('')}</cols>` : '';
+    const filterRef = sheetFilterRef(sheet);
+    const filter = filterRef ? `<autoFilter ref="${filterRef}"/>` : '';
+    const merges = (sheet.merges || []).length ? `<mergeCells count="${sheet.merges.length}">${sheet.merges.map(m => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : '';
+    const links = (sheet.hyperlinks || []).length
+      ? `<hyperlinks>${sheet.hyperlinks.map((h, i) => `<hyperlink ref="${h.ref}" r:id="rId${i + 1}"/>`).join('')}</hyperlinks>` : '';
+    let print = '';
+    if (setup) {
+      const m = setup.margins || {};
+      print = '<printOptions horizontalCentered="1"/>' +
+        `<pageMargins left="${m.left || 0.25}" right="${m.right || 0.25}" top="${m.top || 0.5}" bottom="${m.bottom || 0.5}" header="${m.header || 0.2}" footer="${m.footer || 0.2}"/>` +
+        `<pageSetup orientation="${setup.orientation || 'portrait'}"${setup.fitToWidth ? ` fitToWidth="${setup.fitToWidth}" fitToHeight="${setup.fitToHeight || 0}"` : ''}/>`;
+    }
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      `${sheetPr}${view}${widths}<sheetData>${rowsXml}</sheetData>${filter}${merges}${links}${print}</worksheet>`;
+  }
+  function buildXlsx(model) {
+    const sheets = (model && model.sheets) || [];
+    const ns = 'http://schemas.openxmlformats.org/';
+    const files = [
+      {
+        name: '[Content_Types].xml',
+        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          `<Types xmlns="${ns}package/2006/content-types">` +
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+          '<Default Extension="xml" ContentType="application/xml"/>' +
+          '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+          '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+          sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') +
+          '</Types>'
+      },
+      {
+        name: '_rels/.rels',
+        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          `<Relationships xmlns="${ns}package/2006/relationships">` +
+          `<Relationship Id="rId1" Type="${ns}officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`
+      },
+      {
+        name: 'xl/workbook.xml',
+        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          `<workbook xmlns="${ns}spreadsheetml/2006/main" xmlns:r="${ns}officeDocument/2006/relationships"><sheets>` +
+          sheets.map((s, i) => `<sheet name="${xmlText(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') +
+          '</sheets>' + definedNamesXml(sheets) + '</workbook>'
+      },
+      {
+        name: 'xl/_rels/workbook.xml.rels',
+        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          `<Relationships xmlns="${ns}package/2006/relationships">` +
+          sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="${ns}officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') +
+          `<Relationship Id="rId${sheets.length + 1}" Type="${ns}officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`
+      },
+      { name: 'xl/styles.xml', text: stylesXml() }
+    ].concat(sheets.map((s, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, text: sheetXml(s) })));
+    sheets.forEach((s, i) => {
+      if (!(s.hyperlinks || []).length) return;
+      files.push({
+        name: `xl/worksheets/_rels/sheet${i + 1}.xml.rels`,
+        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          `<Relationships xmlns="${ns}package/2006/relationships">` +
+          s.hyperlinks.map((h, k) => `<Relationship Id="rId${k + 1}" Type="${ns}officeDocument/2006/relationships/hyperlink" Target="${xmlText(h.url)}" TargetMode="External"/>`).join('') +
+          '</Relationships>'
+      });
+    });
+    return zipStored(files);
+  }
+  // Workbook names: each sheet's autofilter range, print area and repeated print title rows.
+  function definedNamesXml(sheets) {
+    const names = [];
+    sheets.forEach((s, i) => {
+      const sheetRef = `'${xmlText(s.name)}'!`;
+      const filterRef = sheetFilterRef(s);
+      if (filterRef) names.push(`<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${sheetRef}${absRef(filterRef)}</definedName>`);
+      if (s.printArea) names.push(`<definedName name="_xlnm.Print_Area" localSheetId="${i}">${sheetRef}${absRef(s.printArea)}</definedName>`);
+      if (s.printTitles) names.push(`<definedName name="_xlnm.Print_Titles" localSheetId="${i}">${sheetRef}${s.printTitles.split(':').map(n => `$${n}`).join(':')}</definedName>`);
+    });
+    return names.length ? `<definedNames>${names.join('')}</definedNames>` : '';
+  }
+
   // Public ApplyFast pages linked from the panel and the toolbar popup. Public URLs only.
-  const APPLYFAST_WEBSITE_URL = 'https://getapplyfast.github.io/';
+  const APPLYFAST_WEBSITE_URL = 'https://applyfast.store/';
   const LINKS = Object.freeze({
     website: APPLYFAST_WEBSITE_URL,
     demo: APPLYFAST_WEBSITE_URL + 'demo/',
@@ -934,13 +1984,17 @@
   });
 
   const api = {
-    parseAmountStrict, isAccountingZero, normalizeRef, parseLine, parseInput, transformPaste, pasteEdit, matchEntries, MIN_PARTIAL_LENGTH,
+    parseAmountStrict, isAccountingZero, normalizeRef, parseLine, remittanceReference, parseInput, transformPaste, pasteEdit, matchEntries, MIN_PARTIAL_LENGTH,
+    INFO_COLUMNS, infoColumns, infoValues,
     classifyRowState, sameRowState, pageSignature, decideGroup,
     SETTLE_QUIET_MS, parseRange, pageAgreement, settleStep, createScan, addPage, scanCoverage,
-    matchAcrossPages, buildPagePlan, checkPageFresh, locatePlanItems, scanPageList,
+    matchAcrossPages, matchLoadedPage, buildPagePlan, checkPageFresh, locatePlanItems, scanPageList,
     AUTO_SCAN_PAGE_CAP, AUTO_NAV_TIMEOUT_MS, planAutoScan, autoNavStatus, verifyAutoPage,
-    plannedAmounts, buildMultiApplyPlan, decideMultiWrites, orderApplyPages, rowChangeSincePreview,
-    revalidateApplyPage, verifyWrite, resetRowAction, applyEndMessage, LINKS
+    NO_AMOUNT_REASON, plannedAmounts, buildMultiApplyPlan, decideMultiWrites, orderApplyPages, rowChangeSincePreview,
+    revalidateApplyPage, verifyWrite, resetRowAction, applyEndMessage,
+    RECON_STATUS, DISCOUNT_STATUS, APPLICATION_KIND, analyzeApplication, parsePaymentReceived, multiPlanAnalysisInput, buildCashWritePlan,
+    RESULT_FILTERS, buildReconciliationResults, filterReconciliationResults, reconciliationApplyResults,
+    REPORT_COLUMNS, buildReconciliationExport, buildXlsx, LINKS
   };
 
   if (typeof module === 'object' && module.exports) module.exports = api;

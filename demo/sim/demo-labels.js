@@ -5,7 +5,7 @@
 
   const TAGS = {
     single: ['demo-tag-free', 'Free in the real extension'],
-    multi: ['demo-tag-licensed', 'Licensed feature in the real extension']
+    multi: ['demo-tag-free', 'Free in the real extension']
   };
 
   function tagModes() {

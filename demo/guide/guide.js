@@ -1,6 +1,7 @@
 // ApplyFast Interactive Demo guide. Tells the story beside the simulated Customer Payment page,
 // which runs the real ApplyFast panel in an iframe. The guide only observes that page (panel state,
 // pasted text, page rows) and never drives ApplyFast's matching, edits, applies or saves; the visitor does.
+// The one exception: it enters the required Payment Received from the pasted remittance (fillPaymentReceived).
 (function () {
   'use strict';
 
@@ -25,12 +26,8 @@
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
   const STEPS_SINGLE = ['copy', 'open', 'paste', 'review', 'apply', 'check', 'save'];
-  const STEPS_ISSUE = ['copy', 'open', 'paste', 'review', 'fix', 'apply', 'check', 'save'];
   const STEPS_MULTI = ['copy', 'open', 'mode', 'scan', 'paste', 'review', 'apply', 'check', 'save'];
-  // The exception loop, as shown to the visitor.
-  const LOOP = ['Review', 'Issue detected', 'Correct remittance', 'Copy corrected remittance', 'Paste into ApplyFast', 'Review again', 'Apply'];
-  const LOOP_AT = { exception: 2, fixcopy: 3, fixpaste: 4, review: 5, apply: 6 };
-  const FIX_STEPS = ['exception', 'fixcopy', 'fixpaste'];
+  const STEPS_RECON = ['copy', 'open', 'mode', 'scan', 'paste', 'review', 'filters', 'apply', 'recon', 'excel'];
   const STEP_LABELS = {
     copy: 'Copy the remittance from Excel',
     open: 'Open ApplyFast',
@@ -38,16 +35,17 @@
     scan: 'Scan all pages',
     paste: 'Paste it into ApplyFast',
     review: 'Click Review Cash Application',
-    fix: 'Correct the remittance and review again',
     apply: 'Check the review, then Apply',
-    check: 'Review the results, then minimize ApplyFast',
-    save: 'Save the payment'
+    filters: 'Walk the reconciliation filters',
+    check: 'Review the result, then minimize ApplyFast',
+    save: 'Save the payment',
+    recon: 'See what Review & Reconciliation found',
+    excel: 'Export the reconciliation report'
   };
-  // Which live step belongs to which checklist item.
-  const STEP_SLOT = { loading: 'copy', scanning: 'scan', singlemode: 'paste', exception: 'fix', fixcopy: 'fix', fixpaste: 'fix', applying: 'apply', results: 'check' };
+  const STEP_SLOT = { loading: 'copy', scanning: 'scan', singlemode: 'paste', applying: 'apply', filters: 'filters', results: 'check', recon: 'recon', excel: 'excel' };
   // Step name mirrored onto the simulated page (it highlights the written rows during 'save').
-  const FOCUS = { open: 'open', paste: 'paste', review: 'review', apply: 'apply', exception: 'exception', fixcopy: 'exception', fixpaste: 'paste', mode: 'mode', scan: 'scan', singlemode: 'single', results: 'results', save: 'save', saved: 'saved' };
-  // After Save: the saved page first, then the confirmation card, then (first remittance) the payoff.
+  const FOCUS = { open: 'open', paste: 'paste', review: 'review', filters: 'review', apply: 'apply', mode: 'mode', scan: 'scan', singlemode: 'single', results: 'results', recon: 'results', excel: 'results', save: 'save', saved: 'saved' };
+  // After Save: the saved page first, then the confirmation card. The time-savings payoff opens only if the visitor asks.
   const SAVED_PAGE_MS = 2400;
   const SAVED_CARD_MS = 2600;
   const GET_APPLYFAST_URL = 'https://applyfast.store/';
@@ -69,17 +67,24 @@
   // Per run: ApplyFast finished applying (stays true after its own Close resets the panel).
   let appliedSeen = false;
   // Per run: skipped lines in the most recent review (-1 before the first review) and the one before.
-  let lastReviewSkips = -1;
-  let prevReviewSkips = -1;
-  let lastSkipped = [];
-  let wasPreviewed = false;
-  // Per run: an exception scenario's review flagged lines, so the correction loop is under way.
-  let hadException = false;
-  // Per run: the spreadsheet version last copied, and whether it was copied since the last review.
   let copiedVersion = 0;
-  let copiedSinceReview = false;
-  // Per session: the time-savings payoff opens by itself only once.
+  // Story B: the Cash Application Report captured from ApplyFast's own Excel download.
+  let exportSeen = false;
+  let exportReport = null;
+  // Per session: the time-savings payoff has been opened by the visitor.
   let payoffShown = false;
+  // Story B: walk the review's own reconciliation filters. Spotlight only; never a click,
+  // so the review stays on All and no result row is hidden.
+  let filterKeys = [];
+  let filterBeat = 0;
+  let filterBeatAt = 0;
+  let filterWalkDone = false;
+  let filterPulses = [];
+  let reconExportAt = 0;
+  let storyEndingDone = false;
+  const FILTER_BEAT_MS = 800;
+  const RECON_HANDOFF_MS = 1400;
+  const STORY_ENDING_MS = 3600;
 
   /* ---------- Simulated page (read-only observation) ---------- */
 
@@ -108,64 +113,37 @@
   function skippedLines(st) {
     if (!st) return [];
     return Array.from(st.d.querySelectorAll('#afPreview tr.af-skip')).map(tr => {
-      const cells = tr.querySelectorAll('td');
-      const reason = tr.querySelector('.af-sub-line');
-      return { lineNo: cells[0] ? cells[0].textContent.trim() : '', raw: cells[1] ? cells[1].textContent.trim() : '', reason: reason ? reason.textContent.trim() : '' };
+      const reason = tr.querySelector('.af-reason');
+      return { lineNo: tr.dataset.line || '', raw: tr.dataset.raw || '', reason: reason ? reason.textContent.trim() : '' };
     });
   }
 
   function observe(st) {
     if (!st) return;
-    const previewed = st.state.startsWith('previewed');
     if (st.state.startsWith('done')) appliedSeen = true;
     else if (appliedSeen && st.state === 'idle' && !st.text.trim() && !st.w.ApplyFastDemo.lines().some(l => l.apply)) {
       // ApplyFast's own Reset cleared the session and unticked its rows (its Close keeps both).
       appliedSeen = false;
-    } else if (previewed) {
-      if (!wasPreviewed) { prevReviewSkips = lastReviewSkips; copiedSinceReview = false; }
+      exportSeen = false;
+      exportReport = null;
+    } else if (st.state.startsWith('previewed')) {
       appliedSeen = false;
-      const skipped = skippedLines(st);
-      lastReviewSkips = skipped.length;
-      if (skipped.length) lastSkipped = skipped;
-      if (scenario.issue && skipped.length) hadException = true;
     }
-    wasPreviewed = previewed;
-  }
-
-  const loopActive = () => !!(scenario && scenario.issue && hadException);
-
-  // Which of the scenario's spreadsheet corrections the visitor has made. Read from the sheet itself,
-  // only to point at what still needs attention; ApplyFast's review decides whether the result is clean.
-  function fixState() {
-    if (!scenario.issue || !sheet) return [];
-    const rows = sheet.dataRows();
-    const isNumber = v => /^-?\d+(\.\d+)?$/.test(v);
-    return scenario.issue.fixes.map(f => {
-      if (f.remove) {
-        const hits = rows.filter(x => x.values[0].trim().toUpperCase() === f.remove.toUpperCase());
-        return { fix: f, done: hits.length === 1, row: hits.length > 1 ? hits[hits.length - 1].r : null };
-      }
-      const c = scenario.columns.findIndex(col => col.key === f.col);
-      const money = scenario.columns[c].money;
-      const same = v => (money ? isNumber(v) && Number(v) === Number(f.to) : v.trim().toUpperCase() === f.to.toUpperCase());
-      const bad = rows.find(x => x.values[c] === f.from);
-      return { fix: f, c, done: !bad && rows.some(x => same(x.values[c])), row: bad ? bad.r : null };
-    });
-  }
-  const sheetDirty = () => !!sheet && sheet.version() !== copiedVersion;
-
-  function fixStage() {
-    if (copiedSinceReview && !sheetDirty()) return 'fixpaste';
-    if (sheetDirty() && fixState().every(f => f.done)) return 'fixcopy';
-    return 'exception';
   }
 
   function computeStep(st) {
     if (!st) return 'loading';
     if (st.saved) return 'saved';
     if (st.state.startsWith('applying')) return 'applying';
-    if (appliedSeen) return st.open ? 'results' : 'save';
-    if (st.state.startsWith('previewed')) return scenario.issue && lastReviewSkips > 0 ? fixStage() : 'apply';
+    if (appliedSeen) {
+      if (scenario.id === 'exceptions') return exportSeen ? 'excel' : 'recon';
+      if (!st.open) return 'save';
+      return 'results';
+    }
+    if (st.state.startsWith('previewed')) {
+      if (scenario.id === 'exceptions' && !filterWalkDone) return 'filters';
+      return 'apply';
+    }
     const pasted = st.text.trim() !== '';
     if (!copied && !pasted) return 'copy';
     if (!st.open) return 'open';
@@ -176,34 +154,99 @@
     } else if (st.multi) {
       return 'singlemode';
     }
-    if (loopActive() && !pasted) return fixStage();
     return pasted ? 'review' : 'paste';
+  }
+
+
+  // Payment Received is required before ApplyFast reviews. The demo enters the pasted remittance's payment
+  // total, as the visitor would from the deposit, unless the visitor has typed their own amount.
+  let autoCash = '';
+  function fillPaymentReceived(st) {
+    const input = st && st.d.getElementById('afPaymentReceived');
+    const core = st && st.w.ApplyFastCore;
+    if (!input || !core || input.readOnly || !st.text.trim()) return;
+    if (input.value && input.value !== autoCash) return;
+    const stated = scenario && scenario.paymentReceived;
+    const total = core.parseInput(st.text).entries.reduce((sum, e) => sum + cents(e.payment || 0), 0);
+    const value = stated ? fmt(stated) : (total > 0 ? fmt(total / 100) : '');
+    if (!value || value === input.value) return;
+    input.value = autoCash = value;
+    input.dispatchEvent(new st.w.Event('input', { bubbles: true }));
+  }
+
+  function visibleFilters(st) {
+    if (!st) return [];
+    return Array.from(st.d.querySelectorAll('#afPreview .af-filter')).map(btn => ({
+      key: btn.dataset.filter || '',
+      label: (btn.textContent || '').trim()
+    })).filter(f => f.key);
+  }
+
+  function resetFilterWalk() {
+    filterKeys = [];
+    filterBeat = 0;
+    filterBeatAt = 0;
+    filterWalkDone = false;
+    filterPulses = [];
+  }
+
+  function advanceFilterWalk(st) {
+    if (!scenario || scenario.id !== 'exceptions') return;
+    const previewing = !!(st && st.state.startsWith('previewed'));
+    const applying = !!(st && st.state.startsWith('applying'));
+    if (!previewing) {
+      if (!applying && !appliedSeen) resetFilterWalk();
+      return;
+    }
+    if (filterWalkDone) return;
+    const filters = visibleFilters(st);
+    if (!filters.length) return;
+    const now = Date.now();
+    if (!filterKeys.length) {
+      filterKeys = filters.map(f => f.key);
+      filterBeat = 0;
+      filterBeatAt = now;
+      filterPulses = [filterKeys[0]];
+      return;
+    }
+    const beatMs = reducedMotion() ? 0 : FILTER_BEAT_MS;
+    if (now - filterBeatAt < beatMs) return;
+    if (filterBeat >= filterKeys.length - 1) {
+      filterWalkDone = true;
+      return;
+    }
+    filterBeat += 1;
+    filterBeatAt = now;
+    filterPulses.push(filterKeys[filterBeat]);
   }
 
   function tick() {
     if (view !== 'scenario' || !scenario) { if (spot.name) spot.hide(); return; }
     const st = simState();
+    fillPaymentReceived(st);
     observe(st);
+    advanceFilterWalk(st);
     const next = computeStep(st);
     if (next !== step) {
       const prev = step;
       step = next;
       renderStep(st);
-      if (step === 'results' && st && prev !== 'save') renderResult(st);
+      if ((step === 'results' || step === 'recon') && st && prev !== 'save') renderResult(st);
+      if (step === 'excel') renderReport();
+      else closeReportStage();
       if (step === 'save' && st) {
         if (document.getElementById('tourResult').hidden) renderResult(st);
         renderSaveCall();
       }
       if (step === 'results' && prev === 'save') renderReviewCall();
       if (step === 'saved' && st) renderSaved(st);
-      if (step === 'exception' && prev !== 'exception') {
-        const sheetBlock = document.querySelector('.tour-sheet');
-        if (sheetBlock) sheetBlock.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
-      }
     }
-    renderFix(st);
+    installExportWatch(st);
     if (st) st.d.body.dataset.demoFocus = FOCUS[step] || '';
     if (st) renderProgress(st);
+    if (st) paintFilterWalk(st);
+    if (step === 'recon') { if (!reconExportAt) reconExportAt = Date.now(); }
+    else reconExportAt = 0;
     updateSpotlight(st);
   }
 
@@ -238,7 +281,7 @@
         return [{ key: 'launcher', resolve: inSim('#afLauncher'), ring: 'pulse' }, currentItem];
       case 'mode':
         return [{ key: 'mode', resolve: modeLabel('multi'), ring: 'pulse' },
-          { key: 'premium', resolve: inGuide('#tourPremium'), ring: 'none' }, currentItem];
+          { key: 'multipage', resolve: inGuide('#tourMultipage'), ring: 'none' }, currentItem];
       case 'singlemode':
         return [{ key: 'mode', resolve: modeLabel('single'), ring: 'pulse' }, currentItem];
       case 'scan':
@@ -248,26 +291,33 @@
       case 'paste':
         return [{ key: 'paste', resolve: inPanel('#matchListArea'), ring: 'pulse' }, currentItem];
       case 'review':
-        return [{ key: 'review', resolve: inPanel('#matchBtn'), ring: 'pulse' }, currentItem,
-          { key: 'fixNote', resolve: inGuide('#tourFix'), ring: 'none' }];
-      case 'exception': {
-        const rows = st && st.open ? Array.from(st.d.querySelectorAll('#afPreview tr.af-skip')) : [];
-        const issues = rows.map((tr, i) => ({ key: `skip:${i}`, resolve: () => (tr.isConnected ? tr : null), ring: i ? 'warn-more' : 'warn' }));
-        return issues.concat(fixTargets(), [{ key: 'fixNote', resolve: inGuide('#tourFix'), ring: 'none' }]);
-      }
-      case 'fixcopy':
-        return [{ key: 'sheet', resolve: inGuide('.tour-sheet'), ring: 'static' },
-          { key: 'copyButton', resolve: inGuide('#copyRemittance'), ring: 'pulse' },
-          { key: 'fixNote', resolve: inGuide('#tourFix'), ring: 'none' }];
-      case 'fixpaste':
-        return [{ key: 'paste', resolve: inPanel('#matchListArea'), ring: 'pulse' },
-          { key: 'fixNote', resolve: inGuide('#tourFix'), ring: 'none' }];
+        return [{ key: 'review', resolve: inPanel('#matchBtn'), ring: 'pulse' }, currentItem];
       case 'apply':
         return [{ key: 'preview', resolve: inPanel('#applyFastBox .af-right'), ring: 'static' },
-          { key: 'apply', resolve: inPanel(scenario.multi ? '#afMultiApplyBtn' : '#afApplyBtn'), ring: 'pulse' }, currentItem,
-          { key: 'fixNote', resolve: inGuide('#tourFix'), ring: 'none' }];
+          { key: 'apply', resolve: inPanel(scenario.multi ? '#afMultiApplyBtn' : '#afApplyBtn'), ring: 'pulse' }, currentItem];
       case 'applying':
         return [{ key: 'panel', resolve: inPanel('#applyFastBox'), ring: 'static' }, currentItem];
+      case 'filters': {
+        const filters = visibleFilters(st);
+        const beat = Math.min(filterBeat, Math.max(filters.length - 1, 0));
+        const rings = filters.map((f, i) => ({
+          key: 'filter:' + f.key,
+          resolve: inPanel('#afPreview .af-filter[data-filter="' + f.key + '"]'),
+          ring: i === beat ? 'pulse' : 'static'
+        }));
+        return rings.concat([
+          { key: 'reviewTable', resolve: inPanel('#afMultiTable, #afReviewTable'), ring: 'static' },
+          currentItem
+        ]);
+      }
+      case 'recon': {
+        const handoff = reconExportAt && (Date.now() - reconExportAt > RECON_HANDOFF_MS);
+        return [{ key: 'recon', resolve: inPanel('#afPreview .af-table-wrap'), ring: handoff ? 'static' : 'pulse' },
+          { key: 'results', resolve: inSim('#afMultiResult, #afApplyResult'), ring: 'static' },
+          { key: 'export', resolve: inSim('#afExportBtn'), ring: handoff ? 'pulse' : 'static' }, currentItem];
+      }
+      case 'excel':
+        return [{ key: 'report', resolve: () => document.getElementById('tourReport'), ring: 'pulse' }, currentItem];
       case 'results':
         return [{ key: 'results', resolve: inSim('#applyFastBox .af-right'), ring: 'static' },
           { key: 'minimize', resolve: inSim('#afMinimizeBtn'), ring: 'pulse' }, currentItem];
@@ -290,95 +340,121 @@
     }
   }
 
-  // The spreadsheet cells or rows still to correct (a selected duplicate row points at Delete row).
-  function fixTargets() {
-    const out = [];
-    fixState().forEach((s, i) => {
-      if (s.done || s.row === null) return;
-      if (s.fix.remove) {
-        const del = sheet.deleteButton();
-        out.push(del.hidden ? { key: `fixRow:${s.row}`, resolve: () => sheet.rowHeadEl(s.row), ring: 'pulse' }
-          : { key: `fixDelete:${i}`, resolve: () => (del.hidden ? null : del), ring: 'pulse' });
-      } else {
-        out.push({ key: `fixCell:${s.row}:${s.c}`, resolve: () => sheet.cellEl(s.row, s.c), ring: 'pulse' });
+
+  function installExportWatch(st) {
+    if (!st || st.w.__afExportWatch) return;
+    st.w.__afExportWatch = true;
+    const orig = st.w.URL.createObjectURL.bind(st.w.URL);
+    st.w.URL.createObjectURL = function (blob) {
+      const url = orig(blob);
+      if (blob && /sheet/.test(blob.type || '')) {
+        blob.arrayBuffer().then(buf => {
+          exportReport = parseReport(buf);
+          exportSeen = !!exportReport;
+          tick();
+        }).catch(() => {});
       }
+      return url;
+    };
+  }
+
+  function parseReport(buf) {
+    const bytes = new Uint8Array(buf);
+    const view = new DataView(buf);
+    const u16 = o => view.getUint16(o, true);
+    const u32 = o => view.getUint32(o, true);
+    let end = bytes.length - 22;
+    while (end >= 0 && u32(end) !== 0x06054b50) end--;
+    if (end < 0) return null;
+    const count = u16(end + 10);
+    let at = u32(end + 16);
+    const files = {};
+    const dec = new TextDecoder('utf-8');
+    for (let i = 0; i < count; i++) {
+      if (u32(at) !== 0x02014b50) return null;
+      const method = u16(at + 10);
+      const size = u32(at + 20);
+      const nameLen = u16(at + 28), extraLen = u16(at + 30), commentLen = u16(at + 32);
+      const local = u32(at + 42);
+      const name = dec.decode(bytes.subarray(at + 46, at + 46 + nameLen));
+      const dataAt = local + 30 + u16(local + 26) + u16(local + 28);
+      if (method !== 0) return null;
+      files[name] = dec.decode(bytes.subarray(dataAt, dataAt + size));
+      at += 46 + nameLen + extraLen + commentLen;
+    }
+    const xml = files['xl/worksheets/sheet1.xml'];
+    if (!xml) return null;
+    const unescapeXml = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+    const rows = [];
+    const rowRe = /<row [^>]*r="(\d+)"[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g;
+    let m;
+    while ((m = rowRe.exec(xml))) {
+      const r = Number(m[1]) - 1;
+      rows[r] = rows[r] || [];
+      const cellRe = /<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+      let c;
+      while ((c = cellRe.exec(m[2] || ''))) {
+        const col = c[1].split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+        const t = (c[2].match(/t="([^"]+)"/) || [])[1];
+        const body = c[3] || '';
+        if (t === 'inlineStr') rows[r][col] = unescapeXml((body.match(/<t[^>]*>([\s\S]*?)<\/t>/) || [, ''])[1]);
+        else if (/<v>/.test(body)) rows[r][col] = Number(body.match(/<v>([^<]*)<\/v>/)[1]);
+      }
+    }
+    const headers = (rows[10] || []).map(h => (h && String(h).startsWith('Difference') ? 'Difference' : h));
+    const endRow = rows.findIndex((r, i) => i > 10 && r && r[0] === 'TOTALS');
+    const data = rows.slice(11, endRow < 0 ? rows.length : endRow).map(r => {
+      const obj = {};
+      headers.forEach((h, i) => { if (h) obj[h] = r && r[i] !== undefined ? r[i] : null; });
+      return obj;
     });
-    return out;
+    return { title: rows[0] && rows[0][0], headers: headers.filter(Boolean), rows: data };
   }
 
-  /* ---------- Exception loop: what ApplyFast detected, and what the visitor does about it ---------- */
-
-  const shownAmount = v => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  function fixText(s) {
-    const f = s.fix;
-    if (f.remove) {
-      return s.done ? `Duplicate ${f.remove} removed.`
-        : `Row ${s.row + 1}: delete the second ${f.remove}. Click row number ${s.row + 1}, then click Delete row.`;
-    }
-    const to = scenario.columns[s.c].money ? shownAmount(f.to) : f.to;
-    return s.done ? `${f.from} corrected to ${to}.`
-      : `Cell ${sheet.addr(s.row, s.c)}: change ${f.from} to ${to}. Double-click the cell, type ${to} and press Enter.`;
+  function closeReportStage() {
+    const stage = document.getElementById('tourReportStage');
+    if (stage) stage.remove();
   }
 
-  function fixNext(st) {
-    const partial = lastReviewSkips > 0 && prevReviewSkips > lastReviewSkips;
-    switch (step) {
-      case 'exception':
-        return (partial ? '<b>Correct the remaining item and review again.</b> ' : '') +
-          'When the remittance is corrected, copy it with <b>Copy Corrected Remittance</b>.';
-      case 'fixcopy':
-        return `&#10003; Remittance corrected. Now copy it: click <b>Copy Corrected Remittance</b>, or select the cells and press ${copyKeys}.`;
-      case 'fixpaste': {
-        const open = st && st.open ? '' : 'open ApplyFast, then ';
-        return `Corrected remittance copied. <b>Paste the corrected remittance into ApplyFast</b>: ${open}click the <b>Payment References</b> box and press ${pasteKeys}.` +
-          (st && st.text.trim() ? ' It replaces the old remittance.' : '');
-      }
-      case 'review':
-        return 'Click <b>Review Cash Application</b> again so ApplyFast checks the corrected remittance.';
-      default:
-        return '';
-    }
-  }
-
-  function renderFix(st) {
-    const host = document.getElementById('tourFix');
-    if (!host) return;
-    const at = loopActive() ? LOOP_AT[step] : undefined;
-    if (at === undefined) {
-      if (!host.hidden) { host.hidden = true; host.innerHTML = ''; host.dataset.html = ''; }
+  function renderReport() {
+    if (!exportReport || document.getElementById('tourReport')) {
+      if (document.getElementById('tourReport')) scheduleStoryEnding();
       return;
     }
-    const issue = scenario.issue;
-    const resolved = step === 'apply';
-    const partial = !resolved && lastReviewSkips > 0 && prevReviewSkips > lastReviewSkips;
-    const loop = `<ol class="tour-loop" id="tourLoop" aria-label="Correction loop">${LOOP.map((label, i) =>
-      `<li class="${i < at ? 'is-done' : i === at ? 'is-current' : ''}">${esc(label)}</li>`).join('')}</ol>`;
-    const detected = resolved
-      ? `<div class="tour-resolved" id="tourResolved"><p class="tour-resolved-flag">&#10003; Issue resolved</p>
-          <p>ApplyFast’s review of the corrected remittance is clean. Check it, then click <b>Apply</b>.</p></div>`
-      : `<div class="tour-exception" id="tourException">
-          <p class="tour-exception-flag">&#9888; Issue detected</p>
-          ${partial ? '<p class="tour-exception-partial" id="tourPartial">&#10003; One issue is fixed, but another still needs attention.</p>' : ''}
-          <p class="tour-exception-head">${esc(issue.headline)}</p>
-          <p class="tour-exception-label">ApplyFast’s review skipped ${plural(lastSkipped.length, 'line', 'lines')}:</p>
-          <ul class="tour-exception-list">${lastSkipped.map(s => `<li><span class="tour-exc-raw">Line ${esc(s.lineNo)}: ${esc(s.raw)}</span><span class="tour-exc-reason">${esc(s.reason)}</span></li>`).join('')}</ul>
-          <p>${esc(issue.explain)}</p>
-        </div>`;
-    const todo = resolved ? '' : `
-        <div class="tour-todo" id="tourTodo">
-          <p class="tour-todo-flag">What to do</p>
-          <p class="tour-todo-head">${esc(issue.action)}</p>
-          <p class="tour-muted">${esc(issue.why)}</p>
-          <ol class="tour-fixlist">${fixState().map(s => `<li class="${s.done ? 'is-done' : ''}">${s.done ? '&#10003; ' : ''}${esc(fixText(s))}</li>`).join('')}</ol>
-          <p class="tour-todo-next" id="tourFixNext">${fixNext(st)}</p>
+    const headers = exportReport.headers;
+    const head = headers.map(h => `<th>${esc(h)}</th>`).join('');
+    const body = exportReport.rows.map(row => `<tr>${headers.map(h => `<td>${row[h] === null || row[h] === undefined ? '' : esc(row[h])}</td>`).join('')}</tr>`).join('');
+    const stage = document.createElement('div');
+    stage.id = 'tourReportStage';
+    stage.className = 'tour-report-stage';
+    stage.setAttribute('role', 'dialog');
+    stage.setAttribute('aria-modal', 'true');
+    stage.setAttribute('aria-label', exportReport.title || 'Cash Application Report');
+    stage.style.top = Math.round(banner.getBoundingClientRect().bottom) + 'px';
+    stage.innerHTML = `
+      <div id="tourReport">
+        <p class="tour-kicker">${esc(exportReport.title || 'Cash Application Report')}</p>
+        <p>This is the report ApplyFast just downloaded. The columns are the report\u2019s own columns.</p>
+        <div class="tour-report">
+          <table class="tour-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
         </div>
-        <p class="tour-fix-rule">Review this exception before applying. Resolve the issue first. Apply only when the remittance is correct.</p>`;
-    const html = `<p class="tour-kicker">Correct the remittance</p>${loop}${detected}${todo}`;
-    if (host.dataset.html === html) return;
-    host.dataset.html = html;
-    host.innerHTML = html;
-    host.hidden = false;
+      </div>`;
+    document.body.appendChild(stage);
+    scheduleStoryEnding();
+  }
+
+  function scheduleStoryEnding() {
+    if (storyEndingDone || !scenario || scenario.id !== 'exceptions') return;
+    storyEndingDone = true;
+    // Hold the centered report even when motion is reduced. Reduced motion only
+    // stops the pulse animation; it must not skip the report.
+    const delay = STORY_ENDING_MS;
+    savedTimers.push(setTimeout(() => {
+      if (view !== 'scenario' || !scenario || scenario.id !== 'exceptions' || step !== 'excel' || payoffOpen()) return;
+      const st = simState();
+      const count = st ? st.w.ApplyFastDemo.lines().filter(l => l.apply).length : 0;
+      openPayoff(count, { ending: 'reconciliation' });
+    }, delay));
   }
 
   function updateSpotlight(st) {
@@ -424,12 +500,8 @@
 
   function resetLoop() {
     appliedSeen = false;
-    lastReviewSkips = -1;
-    prevReviewSkips = -1;
-    lastSkipped = [];
-    wasPreviewed = false;
-    hadException = false;
-    copiedSinceReview = false;
+    exportSeen = false;
+    exportReport = null;
   }
 
   function resetRun() {
@@ -437,17 +509,33 @@
     resetLoop();
     copiedVersion = 0;
     clearSaved();
+    storyEndingDone = false;
+    closeReportStage();
+    reconExportAt = 0;
+    resetFilterWalk();
     closePayoff(true);
     spot.hide();
   }
 
+  function simSrc() {
+    return scenario && scenario.entitled ? SIM_URL + '?license=trial' : SIM_URL;
+  }
+
   function reloadSim() {
-    try { frame.contentWindow.location.reload(); } catch (e) { frame.src = SIM_URL; }
+    frame.src = simSrc();
   }
 
   frame.addEventListener('load', () => {
     step = '';
     resetLoop();
+    // Capture phase: Payment Received is filled before ApplyFast's own Review click handler runs.
+    const fillNow = e => {
+      if (view === 'scenario' && scenario && e.target && (e.target.id === 'matchListArea' || e.target.id === 'matchBtn')) fillPaymentReceived(simState());
+    };
+    try {
+      frame.contentDocument.addEventListener('input', fillNow, true);
+      frame.contentDocument.addEventListener('click', fillNow, true);
+    } catch (e) { /* the simulated page is same-origin; nothing to hook otherwise */ }
     tick();
   });
 
@@ -455,9 +543,11 @@
 
   const payoffOpen = () => !!document.getElementById('tourPayoff');
 
-  function openPayoff(count) {
+  function openPayoff(count, opts) {
+    closeReportStage();
     if (payoffOpen()) return;
     payoffShown = true;
+    const ending = !!(opts && opts.ending === 'reconciliation');
     const still = reducedMotion();
     const layer = document.createElement('div');
     layer.className = `tour-payoff${still ? ' is-still' : ''}`;
@@ -466,35 +556,43 @@
     layer.setAttribute('aria-modal', 'true');
     layer.setAttribute('aria-labelledby', 'tourScaleTitle');
     layer.style.top = `${Math.round(banner.getBoundingClientRect().bottom)}px`;
+    const done = ending
+      ? `The reconciliation report is ready. You applied ${plural(count, 'invoice', 'invoices')}, and the exceptions stayed classified.`
+      : `&#10003; Payment saved. You just applied ${plural(count, 'invoice', 'invoices')}.`;
+    const cta = ending
+      ? `<div class="tour-cta" id="tourCta">
+          <p class="tour-cta-title">Imagine having these exceptions identified, and the reconciliation report ready to hand off.</p>
+          <p>Review &amp; Reconciliation is ApplyFast Premium. Cash application, including multi-page, stays free, and cash application does not expire.</p>
+          <div class="tour-actions">
+            <a class="tour-btn tour-primary" id="getApplyFast" href="${GET_APPLYFAST_URL}" target="_blank" rel="noopener">Get ApplyFast</a>
+            <button type="button" class="tour-btn" id="payoffReplay">Run it again</button>
+            <button type="button" class="tour-link" id="payoffExplore">Guided story</button>
+          </div>
+        </div>`
+      : `<div class="tour-cta" id="tourCta">
+          <p class="tour-cta-title">Ready to see what ApplyFast can do for your workflow?</p>
+          <div class="tour-actions">
+            <button type="button" class="tour-btn tour-primary" id="payoffMultiPage">Now let’s try a larger multi-page payment</button>
+            <button type="button" class="tour-btn" id="payoffExplore">Guided story</button>
+            <button type="button" class="tour-link" id="payoffContinue">Continue exploring this page</button>
+          </div>
+        </div>`;
     layer.innerHTML = `
       <div class="tour-payoff-card" tabindex="-1">
         <button type="button" class="tour-payoff-close" id="payoffClose" aria-label="Close the time-savings story">&times;</button>
-        <p class="tour-payoff-done">&#10003; Payment saved. You just applied ${plural(count, 'invoice', 'invoices')}.</p>
+        <p class="tour-payoff-done">${done}</p>
         <section class="tour-scale" id="tourScale" aria-label="What this means at scale"><div id="tourScaleBody"></div></section>
-        <div class="tour-cta" id="tourCta">
-          <p class="tour-cta-title">Ready to see what ApplyFast can do for your workflow?</p>
-          <div class="tour-actions">
-            <button type="button" class="tour-btn tour-primary" id="payoffExplore">Explore Real-World Scenarios</button>
-            <button type="button" class="tour-btn" id="payoffTryAnother">Try Another Payment</button>
-            <a class="tour-btn" id="payoffGet" href="${GET_APPLYFAST_URL}" target="_blank" rel="noopener">Get ApplyFast</a>
-            <button type="button" class="tour-link" id="payoffContinue">Continue exploring this page</button>
-          </div>
-          <div class="tour-next-feature" id="payoffNextFeature">
-            <p>Want to see the feature built for larger workloads?</p>
-            <button type="button" class="tour-btn tour-feature-btn" id="payoffMultiPage">Try Multiple Pages <span aria-hidden="true">&rarr;</span></button>
-          </div>
-        </div>
+        ${cta}
       </div>`;
     layer.addEventListener('click', e => { if (e.target === layer) closePayoff(); });
     document.body.appendChild(layer);
     Scale.render(document.getElementById('tourScaleBody'), { count, reducedMotion: still });
-    const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
+    const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
     on('payoffClose', () => closePayoff());
     on('payoffContinue', () => closePayoff());
     on('payoffExplore', () => { closePayoff(true); showPicker(); });
-    on('payoffTryAnother', () => { closePayoff(true); loadScenario('full'); });
     on('payoffMultiPage', () => { closePayoff(true); loadScenario('multipage'); });
-    on('payoffGet', () => closePayoff());
+    on('payoffReplay', () => { closePayoff(true); loadScenario('exceptions'); });
     spot.hide();
     requestAnimationFrame(() => layer.classList.add('is-open'));
     layer.querySelector('.tour-payoff-card').focus({ preventScroll: true });
@@ -519,88 +617,75 @@
     copied = false;
     resetRun();
     renderScenario();
-    if (firstLoad) firstLoad = false;
-    else reloadSim();
-    tick();
+    const want = simSrc();
+    if (firstLoad && (frame.getAttribute('src') || '') === want) {
+      firstLoad = false;
+      tick();
+    } else {
+      firstLoad = false;
+      frame.src = want;
+    }
   }
 
   function showPicker() {
     view = 'picker';
     resetRun();
     let num = 0;
-    // Featured scenarios sit above the numbered learning sequence (shown once, not duplicated).
-    const featured = SCENARIOS.scenarios.filter(s => s.featured).map(s => `
-      <section class="tour-featured" aria-label="Featured scenario">
-        <p class="tour-featured-label"><span aria-hidden="true">&#9733;</span> Featured</p>
-        <button type="button" class="tour-card tour-card-featured is-premium" data-scenario="${s.id}">
-          <span class="tour-card-body">
-            <em class="tour-premium-badge"><span aria-hidden="true">&#10022;</span> ApplyFast Premium</em>
-            <b>${esc(s.title)}</b>
-            <span class="tour-featured-summary">${esc(s.featured.summary)}</span>
-            <span class="tour-featured-why"><strong>${esc(s.featured.question)}</strong> ${esc(s.featured.benefit)}</span>
-            <span class="tour-featured-scale">${esc(s.featured.scale)}</span>
-            <span class="tour-featured-foot"><span class="tour-licensed">Licensed feature in the real extension</span>
-              <span class="tour-featured-try">Try Multi-Page <span aria-hidden="true">&rarr;</span></span></span>
-          </span>
-        </button>
-      </section>`).join('');
-    const cards = SCENARIOS.groups.map(g => {
-      const items = SCENARIOS.scenarios.filter(s => s.group === g.id && !s.featured);
-      if (!items.length) return '';
-      return `<h3 class="tour-group" data-group="${g.id}">${esc(g.title)}</h3>` + items.map(s => `
+    const cards = SCENARIOS.scenarios.map(s => `
       <button type="button" class="tour-card" data-scenario="${s.id}">
         <span class="tour-card-num">${++num}</span>
         <span class="tour-card-body"><b>${esc(s.title)}</b><span>${esc(s.card)}</span></span>
       </button>`).join('');
-    }).join('');
     guide.innerHTML = `
       <section class="tour-block">
-        <p class="tour-kicker">Real-world scenarios</p>
-        <h2>What happens when the remittance isn’t perfect?</h2>
-        <p>Pick any scenario. Each one starts on a fresh Customer Payment page with its own remittance.</p>
+        <p class="tour-kicker">Guided story</p>
+        <h2>Apply the cash. See what needs reconciliation.</h2>
+        <p>Start with a clean cash application, then a larger multi-page payment, then a remittance that contains exceptions.</p>
       </section>
-      ${featured}
       <div class="tour-cards" id="scenarioList">${cards}</div>
-      <button type="button" class="tour-link" id="replayBasic">&#8634; Replay your first remittance</button>`;
-    guide.querySelectorAll('[data-scenario]').forEach(b => b.addEventListener('click', () => loadScenario(b.dataset.scenario)));    document.getElementById('replayBasic').addEventListener('click', () => loadScenario('basic'));
+      <button type="button" class="tour-link" id="replayBasic">&#8634; Replay basic cash application</button>`;
+    guide.querySelectorAll('[data-scenario]').forEach(b => b.addEventListener('click', () => loadScenario(b.dataset.scenario)));
+    document.getElementById('replayBasic').addEventListener('click', () => loadScenario('basic'));
     guide.scrollTop = 0;
   }
 
-  function premiumHtml() {
+  function multipageHtml() {
     return `
-      <div class="tour-premium" id="tourPremium">
-        <p class="tour-premium-title"><span aria-hidden="true">&#9733;</span> ApplyFast Premium</p>
-        <p class="tour-premium-lead">Scan and apply across multiple invoice pages automatically.</p>
-        <p class="tour-premium-note">Licensed feature in the real extension</p>
-        <ul class="tour-premium-modes">
+      <div class="tour-multipage" id="tourMultipage">
+        <p class="tour-multipage-title"><span aria-hidden="true">&#9733;</span> Multi-Page Cash Application</p>
+        <p class="tour-multipage-lead">Scan and apply across multiple invoice pages automatically.</p>
+        <p class="tour-multipage-note">Free in the real extension</p>
+        <ul class="tour-multipage-modes">
           <li><b>This page only</b><span>Free</span></li>
-          <li><b>All pages</b><span>Licensed &middot; unlocked for this demo</span></li>
+          <li><b>All pages</b><span>Free</span></li>
         </ul>
       </div>`;
   }
 
   function introHtml() {
+    const pageList = Array.from(new Set(scenario.lines.map(l => SCENARIOS.pageOf(l.invoice)).filter(n => n >= 1))).sort((a, b) => a - b);
+    const pages = scenario.multi && pageList.length > 1
+      ? `<p class="tour-muted">These invoices are on pages ${pageList.slice(0, -1).join(', ')} and ${pageList[pageList.length - 1]} of the Invoices list.</p>`
+      : '';
     if (scenario.id === 'basic') {
       return `
         <section class="tour-block" id="tourStory">
-          <p class="tour-kicker">The situation</p>
-          <h2>You’re an AR specialist.</h2>
-          <p>${esc(DATA.customer.name)} just sent a payment of <b>${money(scenario.totalPaid)}</b>. Their remittance advice, the list of invoices the payment covers, is sitting in Excel.</p>
-          <p>You need to apply the payment against the customer’s open invoices.</p>
+          <p class="tour-kicker">Story A</p>
+          <h2>You\u2019re an AR specialist.</h2>
+          <p>${esc(DATA.customer.name)} just sent a payment of <b>${money(scenario.totalPaid)}</b>. The remittance is short: ${plural(scenario.lines.length, 'invoice', 'invoices')}, each one paid in full.</p>
+          <p>Every line matches. There is nothing to correct.</p>
           <p class="tour-muted">Normally, you would search for each invoice on the Customer Payment page, tick it and type the amount, one line at a time.</p>
           <h3 class="tour-try">Try ApplyFast.</h3>
+          <p class="tour-muted">Cash application is free, on this page and across all pages. Multi-page is not Premium.</p>
         </section>`;
     }
-    const pageList = Array.from(new Set(scenario.lines.map(l => SCENARIOS.pageOf(l.invoice)))).sort((a, b) => a - b);
-    const pages = scenario.multi
-      ? `<p class="tour-muted">These invoices are on pages ${pageList.slice(0, -1).join(', ')} and ${pageList[pageList.length - 1]} of the Invoices list.</p>`
-      : '';
+    const kicker = scenario.story === 'B' ? 'Story B' : 'Story A';
     return `
       <section class="tour-block" id="tourStory">
-        <button type="button" class="tour-link" id="backToPicker">&larr; All scenarios</button>
-        <p class="tour-kicker">Real-world scenario</p>
+        <button type="button" class="tour-link" id="backToPicker">&larr; Guided story</button>
+        <p class="tour-kicker">${kicker}</p>
         <h2>${esc(scenario.title)}</h2>
-        ${scenario.premium ? premiumHtml() : ''}
+        ${scenario.highlight ? multipageHtml() : ''}
         <p class="tour-lead">${esc(scenario.intro)}</p>
         ${scenario.introMore ? `<p>${esc(scenario.introMore)}</p>` : ''}
         ${pages}
@@ -618,27 +703,18 @@
           <span class="tour-note" id="copyNote">Or select the cells and press ${copyKeys}.</span>
         </div>
       </section>
-      <section class="tour-block tour-fix" id="tourFix" hidden aria-live="polite"></section>
       <section class="tour-block tour-steps" id="tourStep" aria-live="polite"></section>
       <section class="tour-block tour-result" id="tourResult" hidden></section>`;
 
     const fileName = `Remittance_Harborview_2026-09-28${scenario.id === 'basic' ? '' : '_' + scenario.id}.xlsx`;
     sheet = Sheet.render(document.getElementById('sheetHost'), Sheet.remittanceSheet(scenario, DATA.customer, PAYMENT_DATE), {
       fileName,
-      // Exception remittances can be corrected in the spreadsheet, then copied and pasted again.
-      editable: !!scenario.issue,
+      editable: false,
       onCopy: text => {
         copied = true;
         copiedVersion = sheet.version();
-        if (loopActive()) copiedSinceReview = true;
         const lines = text.split('\n').filter(l => l.trim()).length;
-        document.getElementById('copyNote').textContent = loopActive()
-          ? `Copied ${plural(lines, 'row', 'rows')}. Now paste them into ApplyFast.`
-          : `Copied ${plural(lines, 'row', 'rows')}. Now open ApplyFast.`;
-        tick();
-      },
-      onChange: () => {
-        document.getElementById('copyRemittance').textContent = 'Copy Corrected Remittance';
+        document.getElementById('copyNote').textContent = `Copied ${plural(lines, 'row', 'rows')}. Now open ApplyFast.`;
         tick();
       }
     });
@@ -649,23 +725,26 @@
   }
 
   function reviewHint() {
-    const s = scenario;
-    const first = s.lines[0];
-    if (s.resolved && lastReviewSkips === 0) return 'The corrected remittance is clean: every line is Ready.';
-    switch (s.id) {
-      case 'full':
-        return 'No amounts were pasted, so each line uses the invoice’s remaining Amt. Due as its Payment.';
-      case 'other':
-        return `Each PO number found its invoice through the PO/Check Number column, for example ${first.ref} is ${first.invoice}.`;
-      case 'discount':
-        return `New Pay/Disc shows the Payment and the discount together, for example ${fmt(first.paid)} / ${fmt(first.discount)} for ${first.ref}.`;
-      case 'partial':
-        return `${first.ref} has an Amt. Due of ${fmt(invoice(first.ref).due)}; ApplyFast plans a Payment of ${fmt(first.paid)} only.`;
-      case 'multipage':
-        return 'The review covers every page. Apply writes each invoice on its own page.';
-      default:
-        return 'Each remittance line matched exactly one open invoice and is marked Ready.';
+    if (scenario.id === 'exceptions') {
+      return 'Ready lines will be applied. Lines ApplyFast cannot match are skipped and left in the review. The remittance stays as it is.';
     }
+    if (scenario.multi) return 'The review covers every page. Apply writes each invoice on its own page.';
+    return 'Each remittance line matched exactly one open invoice and is marked Ready.';
+  }
+
+  function reconFound(st) {
+    if (!st) return '';
+    const rows = Array.from(st.d.querySelectorAll('#afPreview tr[data-recon]'));
+    const counts = {};
+    rows.forEach(tr => {
+      const label = ((tr.querySelector('.af-recon') || {}).textContent || tr.getAttribute('data-recon') || '').trim();
+      if (label) counts[label] = (counts[label] || 0) + 1;
+    });
+    const items = Object.keys(counts).map(k => `<li>${esc(k)}: ${counts[k]}</li>`).join('');
+    const title = st.d.querySelector('.af-sum-title');
+    return `<p>${title ? esc(title.textContent) : 'Cash application is complete.'}</p>` +
+      (items ? `<ul class="tour-exception-list" id="tourReconCounts">${items}</ul>` : '') +
+      '<p class="tour-muted">These labels are ApplyFast\u2019s own reconciliation statuses. ApplyFast does not clear the exceptions or decide the accounting treatment.</p>';
   }
 
   function stepDetail(st) {
@@ -678,11 +757,11 @@
         return `<p><b>Remittance copied.</b></p>
           <p>Now open ApplyFast. Click the ApplyFast icon on the Customer Payment page.</p>`;
       case 'mode':
-        return '<p>What if the invoices aren’t all on the current page? In the ApplyFast panel, choose <b>All pages</b>.</p>' +
-          `<div class="tour-premium tour-premium-inline" id="tourPremiumStep">
-            <p class="tour-premium-title"><span aria-hidden="true">&#9733;</span> ApplyFast Premium</p>
-            <p class="tour-premium-lead">Scan and apply across multiple invoice pages automatically.</p>
-            <p class="tour-premium-note">Licensed feature in the real extension &middot; <b>This page only</b> stays free</p>
+        return '<p>What if the invoices aren’t all on the current page? In the ApplyFast panel, choose <b>All pages</b>. Scanning and applying across pages is free.</p>' +
+          `<div class="tour-multipage tour-multipage-inline" id="tourMultipageStep">
+            <p class="tour-multipage-title"><span aria-hidden="true">&#9733;</span> Multi-Page Cash Application</p>
+            <p class="tour-multipage-lead">Scan and apply across multiple invoice pages automatically.</p>
+            <p class="tour-multipage-note">Free in the real extension &middot; <b>This page only</b> and <b>All pages</b></p>
           </div>`;
       case 'scan':
         return '<p>Click <b>Scan All Pages</b>. ApplyFast switches through every page of the list and reads it. Scanning never writes anything.</p>';
@@ -696,27 +775,30 @@
       case 'singlemode':
         return '<p>This remittance only needs the current page. In the ApplyFast panel, choose <b>This page only</b>.</p>';
       case 'review':
-        if (loopActive()) {
-          return '<p><b>The remittance changed.</b></p><p>Click <b>Review Cash Application</b> again so ApplyFast checks the corrected lines. Nothing is written yet.</p>';
-        }
-        return '<p>ApplyFast already turned your Excel rows into lines it understands. Click <b>Review Cash Application</b>. Nothing is written yet.</p>';
-      case 'exception':
-        return '<p><b>Issue detected.</b> Correct the remittance in the spreadsheet, as shown under it.</p>';
-      case 'fixcopy':
-        return '<p>Copy the corrected remittance from the spreadsheet.</p>';
-      case 'fixpaste':
-        return '<p>Paste the corrected remittance into ApplyFast.</p>';
+        return '<p>ApplyFast already turned your Excel rows into lines it understands. Click <b>Review Cash Application</b>. Nothing is written yet.</p>' +
+          '<p class="tour-muted">Payment Received is required. In this demo it is entered for you' +
+          (scenario.paymentReceived ? ', as the cash that arrived.' : ': the remittance\u2019s payment total.') + '</p>';
+      case 'filters':
+        return filterWalkHtml(st);
       case 'apply':
         return `<p>This is the review. ${esc(reviewHint())}</p>
-          <p class="tour-muted">${scenario.columns.some(c => c.money)
-            ? 'New Pay/Disc is the Amount Paid / Discount from the remittance.'
-            : 'New Pay/Disc is each invoice’s remaining Amt. Due.'}</p>
-          <p>When it looks right, click <b>Apply</b>.</p>`;
+          <p class="tour-muted">Requested is what the remittance asks for; Applied is the Payment Apply writes.</p>
+          ${scenario.id === 'exceptions' ? '<p id="tourFilterNote">The reconciliation filters on this review only change which rows are shown. The walk left every row visible.</p>' : ''}
+          <p>When it looks right, click <b>Apply</b>. ${scenario.id === 'exceptions' ? 'You do not change the remittance first.' : ''}</p>`;
       case 'applying':
         return scenario.multi ? '<div id="tourProgress" class="tour-progress"></div>' : '<p>Applying&hellip;</p>';
+      case 'recon':
+        return `<p><b>Cash application is complete.</b> The lines ApplyFast could apply are on the payment. Nothing was left for you to correct.</p>
+          <p>Now see what <b>Review &amp; Reconciliation</b> found. It classifies this application. It does not change what was applied.</p>
+          <p>The filters on that review sort these same rows. They never change what was applied.</p>
+          ${reconFound(st)}
+          <p>Next, click <b>Export Excel</b> for the Cash Application Report.</p>`;
+      case 'excel':
+        return '<p><b>The reconciliation report is open.</b> The Cash Application Report ApplyFast just downloaded is in the center. Review &amp; Reconciliation is ApplyFast Premium. Cash application, including multi-page, stays free, and cash application does not expire.</p>';
       case 'results':
-        return `<p><b>Application complete. Review the results before saving.</b></p>
-          <p>Check the messages and applied amounts. When you’re satisfied, close or minimize ApplyFast and save the payment.</p>
+        return `<p><b>Cash application is complete.</b></p>
+          <p>${scenario.id === 'basic' ? 'These invoices were applied. There were no exceptions to correct.' : 'Check the messages and applied amounts.'}</p>
+          <p>When you\u2019re satisfied, close or minimize ApplyFast and save the payment.</p>
           <p class="tour-muted">Use the <b>&ndash;</b> button at the top right of the ApplyFast panel.</p>`;
       case 'save':
         return '<p>Click <b>Save</b> at the top of the Customer Payment page.</p>';
@@ -725,11 +807,36 @@
     }
   }
 
+
+  function filterWalkHtml(st) {
+    const filters = visibleFilters(st);
+    const beat = Math.min(filterBeat, Math.max(filters.length - 1, 0));
+    const current = filters[beat];
+    const items = filters.map((f, i) => `<li class="${i === beat ? 'is-current' : ''}">${esc(f.label)}</li>`).join('');
+    const name = current ? esc(current.label) : 'these filters';
+    return `<p>These are the reconciliation filters already on this review. Each one only changes which rows are shown. ApplyFast still writes the full plan, and this walk leaves every row visible.</p>
+      <p id="tourFilterBeat">Now: <b>${name}</b></p>
+      <ul class="tour-loop" id="tourFilterWalk">${items}</ul>
+      <p class="tour-muted">Review &amp; Reconciliation is ApplyFast Premium. Cash application, including multi-page, stays free, and cash application does not expire.</p>`;
+  }
+
+  function paintFilterWalk(st) {
+    const list = document.getElementById('tourFilterWalk');
+    if (!list || step !== 'filters') return;
+    const filters = visibleFilters(st);
+    const beat = Math.min(filterBeat, Math.max(filters.length - 1, 0));
+    if (list.dataset.beat === String(beat)) return;
+    list.dataset.beat = String(beat);
+    list.querySelectorAll('li').forEach((li, i) => li.classList.toggle('is-current', i === beat));
+    const name = document.querySelector('#tourFilterBeat b');
+    if (name && filters[beat]) name.textContent = filters[beat].label;
+  }
+
   function renderStep(st) {
     const host = document.getElementById('tourStep');
     if (!host) return;
-    const steps = scenario.multi ? STEPS_MULTI : scenario.issue ? STEPS_ISSUE : STEPS_SINGLE;
-    const slot = step === 'review' && loopActive() ? 'fix' : STEP_SLOT[step] || step;
+    const steps = scenario.id === 'exceptions' ? STEPS_RECON : scenario.multi ? STEPS_MULTI : STEPS_SINGLE;
+    const slot = STEP_SLOT[step] || step;
     const current = step === 'saved' ? steps.length : steps.indexOf(slot);
     host.innerHTML = `<ol class="tour-checklist">${steps.map((s, i) => {
       const cls = i < current ? 'is-done' : i === current ? 'is-current' : '';
@@ -737,12 +844,11 @@
     }).join('')}</ol>`;
     host.dataset.step = step;
     const item = host.querySelector('li.is-current');
-    // During the correction loop the spreadsheet and its correction notes stay in view instead.
-    if (item && slot !== 'fix') item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (item) item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     const pasteBtn = document.getElementById('pasteForMe');
     if (pasteBtn) pasteBtn.addEventListener('click', pasteForMe);
     const result = document.getElementById('tourResult');
-    if (result && !['results', 'save', 'saved'].includes(step)) { result.hidden = true; result.innerHTML = ''; }
+    if (result && !['results', 'recon', 'excel', 'save', 'saved'].includes(step)) { result.hidden = true; result.innerHTML = ''; delete result.dataset.report; }
   }
 
   // Fallback for visitors who cannot use the clipboard: delivers the same spreadsheet text through
@@ -772,24 +878,33 @@
     const applied = pageLines.filter(l => l.apply);
     const totalPaid = applied.reduce((sum, l) => sum + num(l.amount), 0);
     const totalDisc = applied.reduce((sum, l) => sum + num(l.disc), 0);
-    // After the visitor fixed the exceptions, the result is compared with the corrected remittance.
-    const lines = scenario.resolved && lastReviewSkips === 0 ? scenario.resolved : scenario.lines;
+    const lines = scenario.lines;
 
-    // A line counts as applied only when the page holds exactly the amounts it asked for.
+    // Written means the payment row is ticked. The amount on the page can be less than the remittance asked for.
     let notApplied = 0;
     const rows = lines.map(l => {
       const page = byRef.get(l.invoice);
       const inv = invoice(l.invoice);
       const paid = SCENARIOS.amountOf(l);
-      const written = page && page.apply && cents(num(page.amount)) === cents(paid) && cents(num(page.disc)) === cents(l.discount);
+      const onPage = !!(page && page.apply);
       let result;
-      if (!written) { result = '<span class="tour-warn">&#9888; Not applied</span>'; notApplied++; }
-      else if (l.discount > 0) result = '<span class="tour-ok">&#10003; Applied with discount</span>';
-      else if (l.paid === null) result = '<span class="tour-ok">&#10003; Amount Due applied</span>';
-      else if (cents(paid + l.discount) < cents(inv.due)) result = `<span class="tour-ok">&#10003; Partial payment</span><div class="tour-sub">${money(inv.due - paid)} stays open</div>`;
-      else result = '<span class="tour-ok">&#10003; Applied in full</span>';
+      if (!onPage) {
+        result = scenario.id === 'exceptions'
+          ? '<span class="tour-warn">Not written</span><div class="tour-sub">Left for reconciliation</div>'
+          : '<span class="tour-warn">&#9888; Not applied</span>';
+        notApplied++;
+      } else {
+        const amt = num(page.amount);
+        const disc = num(page.disc);
+        if (disc > 0 && inv && cents(disc) > cents(inv.discAvail)) result = '<span class="tour-ok">&#10003; Applied</span><div class="tour-sub">Disc. Taken is above Disc. Avail.</div>';
+        else if (disc > 0) result = '<span class="tour-ok">&#10003; Applied with discount</span>';
+        else if (inv && cents(paid) > cents(inv.due) && cents(amt) === cents(inv.due)) result = '<span class="tour-ok">&#10003; Applied up to the open amount</span><div class="tour-sub">The rest of the remittance amount stays unapplied</div>';
+        else if (cents(amt) < cents(paid)) result = `<span class="tour-ok">&#10003; Applied ${money(amt)}</span><div class="tour-sub">Payment Received did not cover the full remittance line</div>`;
+        else if (inv && cents(amt + disc) < cents(inv.due)) result = `<span class="tour-ok">&#10003; Partial payment</span><div class="tour-sub">${money(inv.due - amt)} stays open</div>`;
+        else result = '<span class="tour-ok">&#10003; Applied in full</span>';
+      }
       const ref = l.ref === l.invoice || !inv ? esc(l.ref) : `${esc(l.ref)}<div class="tour-sub">Invoice ${esc(l.invoice)}</div>`;
-      const shown = written ? num(page.amount) : l.paid;
+      const shown = onPage ? num(page.amount) : l.paid;
       return `<tr><td>${ref}</td><td class="num">${money(l.discount)}</td><td class="num">${shown === null ? '&mdash;' : money(shown)}</td><td>${result}</td></tr>`;
     }).join('');
 
@@ -801,7 +916,7 @@
 
     const summary = `<p class="tour-summary" id="tourSummary">&#10003; ${plural(applied.length, 'invoice', 'invoices')} applied &middot; ${money(totalPaid)} applied` +
       (totalDisc ? ` &middot; ${money(totalDisc)} discount taken` : '') + '</p>' +
-      (notApplied ? `<p class="tour-warn-line">&#9888; ${plural(notApplied, 'remittance line was', 'remittance lines were')} not applied. The ApplyFast results list the reason for each.</p>` : '');
+      (notApplied ? `<p class="tour-warn-line">${plural(notApplied, 'remittance line was', 'remittance lines were')} not written. ${scenario.id === 'exceptions' ? 'Review &amp; Reconciliation classifies them. Nothing here is for you to correct.' : 'The ApplyFast results list the reason for each.'}</p>` : '');
 
     const refHead = scenario.columns[0].label;
     host.innerHTML = `
@@ -856,44 +971,45 @@
         </dl>
         <p class="tour-saved-note">Demo transaction &mdash; fictional environment</p>
       </div>`;
-    const isBasic = scenario.id === 'basic';
     const atScale = scenario.atScale
       ? `<div class="tour-scale-note" id="tourScaleNote">
           <p class="tour-scale-note-title">This is where automation becomes especially useful at scale.</p>
           <p>${esc(scenario.atScale)}</p>
         </div>`
       : '';
-    const final = isBasic
+    const final = scenario.id === 'basic'
       ? `<div class="tour-final" id="tourFinal">
-          <p class="tour-big">You’re done.</p>
-          <p>You just applied the customer payment and completed the transaction.</p>
+          <p class="tour-big">Cash application complete.</p>
+          <p>Now let\u2019s try a larger multi-page payment.</p>
           <div class="tour-actions">
-            <button type="button" class="tour-btn tour-primary" id="exploreScenarios">Explore Real-World Scenarios</button>
-            <button type="button" class="tour-btn" id="tryAnother">Try Another Payment</button>
-            <a class="tour-btn" id="getApplyFast" href="${GET_APPLYFAST_URL}" target="_blank" rel="noopener">Get ApplyFast</a>
-          </div>
-          <div class="tour-next-feature" id="tourNextFeature">
-            <p>Want to see the feature built for larger workloads?</p>
-            <button type="button" class="tour-btn tour-feature-btn" id="tryMultiPage">Try Multiple Pages <span aria-hidden="true">&rarr;</span></button>
+            <button type="button" class="tour-btn tour-primary" id="tryMultiPage">Try a larger multi-page payment</button>
           </div>
           <button type="button" class="tour-link" id="tourPayoffLink">See the time-savings story</button>
         </div>`
+      : scenario.id === 'multipage'
+      ? `<div class="tour-final" id="tourFinal">
+          <p class="tour-big">Cash application is done.</p>
+          <p>${esc(scenario.takeaway)} You do not correct anything.</p>
+          ${atScale}
+          <div class="tour-actions">
+            <button type="button" class="tour-btn tour-primary" id="tryExceptions">See exceptions and reconciliation</button>
+          </div>
+        </div>`
       : `<div class="tour-final" id="tourFinal">
           <p>${esc(scenario.takeaway)}</p>
-          ${atScale}
-          <div class="tour-actions"><button type="button" class="tour-btn tour-primary" id="anotherScenario">Try another scenario</button>
-          <button type="button" class="tour-btn" id="rerunScenario">Run it again</button></div>
+          <p class="tour-muted">The reconciliation report above is the handoff. Saving the payment is still optional, and cash application stayed free.</p>
+          <div class="tour-actions">
+            <button type="button" class="tour-btn" id="rerunScenario">Run it again</button>
+          </div>
         </div>`;
     next.innerHTML = `
       <p class="tour-big" id="tourSavedNote">Saved. The payment now lists only the invoices ApplyFast applied.</p>
       <div id="tourSavedWrap" hidden>${card}${final}</div>`;
 
     const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
-    on('exploreScenarios', showPicker);
-    on('tryAnother', () => loadScenario('full'));
     on('tourPayoffLink', () => openPayoff(s.appliedCount));
     on('tryMultiPage', () => loadScenario('multipage'));
-    on('anotherScenario', showPicker);
+    on('tryExceptions', () => loadScenario('exceptions'));
     on('rerunScenario', () => loadScenario(scenario.id));
     next.scrollIntoView({ block: 'start', behavior: 'smooth' });
 
@@ -909,12 +1025,6 @@
       wrap.hidden = false;
       wrap.classList.add('tour-saved-flash');
       wrap.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' });
-      if (!isBasic || payoffShown) return;
-      later(SAVED_CARD_MS, () => {
-        if (step !== 'saved' || view !== 'scenario') return;
-        savedPhase = 'payoff';
-        openPayoff(s.appliedCount);
-      });
     });
   }
 
@@ -936,6 +1046,7 @@
     get scenario() { return scenario && scenario.id; },
     get copied() { return copied; },
     get savedPhase() { return savedPhase; },
-    get payoffShown() { return payoffShown; }
+    get payoffShown() { return payoffShown; },
+    get filterPulses() { return filterPulses.slice(); }
   };
 })();

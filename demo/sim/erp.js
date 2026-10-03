@@ -1,7 +1,8 @@
 // ApplyFast Interactive Demo: a fictional ERP "Customer Payment" page. It renders the demo invoices
 // in the Invoices sublist markup ApplyFast reads (table#apply_splits, tr#applyheader with
 // td[data-label], tr#applyrowN, apply/amount/disc inputs), pages them through the Range menu and
-// keeps the header totals equal to the ticked Payment fields on all pages. Save is local to this page:
+// keeps the header totals in step with the ticked Payment fields on all pages and the Payment Amount.
+// Save is local to this page:
 // no request is made and nothing leaves the browser.
 (function () {
   'use strict';
@@ -116,27 +117,45 @@
     tr.classList.toggle('erp-applied', line.apply);
   }
 
-  // A hand-ticked Apply box fills Payment with the Amt. Due; unticking clears the line.
+  // Payment Amount as NetSuite behaves: empty or zero, it follows the line applications;
+  // entered, it is the cash available, so Unapplied = Payment Amount - Applied.
+  const paymentInput = document.getElementById('payment_formattedValue');
+  const paymentHidden = document.getElementById('payment');
+  let paymentEntered = 0;
+  const appliedTotalNow = () => lines.reduce((sum, l) => sum + (l.apply ? parseUS(l.amount) : 0), 0);
+
+  // A hand-ticked Apply box fills Payment with the Amt. Due, limited by the Payment Amount still available;
+  // unticking clears the line.
   function onCheckbox(box) {
     const tr = box.closest('tr[id^="applyrow"]');
     if (!tr) return;
     const idx = Number(tr.id.slice('applyrow'.length));
     const amount = tr.querySelector('input[id^="amount"][id$="_formattedValue"]');
     const disc = tr.querySelector('input[id^="disc"][id$="_formattedValue"]');
-    if (box.checked && !amount.value) amount.value = fmt(INVOICES[idx].due);
+    if (box.checked && !amount.value) {
+      const available = paymentEntered ? Math.max(0, paymentEntered - appliedTotalNow()) : Infinity;
+      amount.value = fmt(Math.min(INVOICES[idx].due, available));
+    }
     if (!box.checked) { amount.value = ''; disc.value = ''; }
   }
 
   function recalc() {
     if (saved) return;
     document.querySelectorAll('#apply_splits tr[id^="applyrow"]').forEach(readLine);
-    const total = lines.reduce((sum, l) => sum + (l.apply ? parseUS(l.amount) : 0), 0);
-    const text = fmt(total);
-    document.getElementById('applied').value = text;
-    document.getElementById('erpPayment').value = text;
-    document.getElementById('erpToApply').textContent = text;
+    const total = appliedTotalNow();
+    const payment = paymentEntered || total;
+    document.getElementById('applied').value = fmt(total);
+    document.getElementById('unapplied').value = fmt(Math.max(0, payment - total));
+    paymentInput.value = fmt(payment);
+    paymentHidden.value = String(Math.round(payment * 100) / 100);
+    document.getElementById('erpToApply').textContent = fmt(payment);
   }
   document.addEventListener('change', e => { if (e.target.closest && e.target.closest('#apply_splits')) recalc(); }, true);
+  paymentInput.addEventListener('change', () => {
+    if (saved) return;
+    paymentEntered = Math.max(0, parseUS(paymentInput.value));
+    recalc();
+  });
   document.addEventListener('click', e => {
     const box = e.target.closest && e.target.closest('#apply_splits input[type="checkbox"]');
     if (!box) return;
@@ -203,6 +222,7 @@
   window.ApplyFastDemo = {
     lines: () => { recalc(); return lines.map((l, i) => Object.assign({ ref: INVOICES[i].ref }, l)); },
     applied: () => document.getElementById('applied').value,
+    paymentAmount: () => ({ shown: paymentInput.value, value: paymentHidden.value, entered: paymentEntered }),
     page: () => ({ current: current + 1, total: pages.length }),
     saved: () => (saved ? Object.assign({}, saved) : null),
     visibleRefs: () => Array.from(document.querySelectorAll('#apply_splits tr[id^="applyrow"]')).map(tr => INVOICES[Number(tr.id.slice('applyrow'.length))].ref)

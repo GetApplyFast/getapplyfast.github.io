@@ -28,7 +28,7 @@
     "operatingSystem": "Google Chrome",
     "url": "https://applyfast.store/",
     "description": "A Chrome extension that applies invoice references, partial payments, discounts and remittance advice on NetSuite's Accept Customer Payment screen, with a review before anything is written.",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free to install. This page only mode is free." }
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free to install. Cash application is free on this page and across all pages." }
   }
   </script>
   <style>
@@ -462,8 +462,8 @@
         <div class="section-head center">
           <p class="eyebrow dark">How it works</p>
           <h2 id="howTitle">See exactly how it works</h2>
-          <p>The same five steps you take in the interactive demo, on NetSuite's Accept Customer Payment screen.</p>
-          <div class="flow-line" aria-hidden="true"><span>Excel</span><span>Paste</span><span>Review</span><span>Resolve</span><span>Apply</span><span>Save</span></div>
+          <p>Review the remittance and apply the cash on NetSuite's Accept Customer Payment screen. Exceptions stay available for reconciliation.</p>
+          <div class="flow-line" aria-hidden="true"><span>Excel</span><span>Paste</span><span>Review</span><span>Apply</span><span>Reconcile</span><span>Save</span></div>
         </div>
         <div class="workflow">
           <ol class="steps" role="tablist" aria-label="Workflow steps" aria-orientation="vertical">
@@ -471,10 +471,10 @@
               <span class="step-num">1</span><span><b>Paste</b><span class="step-text">Paste your remittance advice or invoice references. Excel columns are converted as you paste.</span></span></button></li>
             <li role="presentation"><button class="step" type="button" role="tab" id="tab-review" aria-controls="workflowPanel" aria-selected="false" tabindex="-1" data-img="demo-review" data-alt="The ApplyFast review: every remittance line matched to an open invoice and marked Ready." data-caption="Review: every line and its status, before anything changes in NetSuite.">
               <span class="step-num">2</span><span><b>Review</b><span class="step-text">ApplyFast matches references against the available invoice lines and identifies exceptions.</span></span></button></li>
-            <li role="presentation"><button class="step" type="button" role="tab" id="tab-resolve" aria-controls="workflowPanel" aria-selected="false" tabindex="-1" data-img="demo-exception" data-alt="The ApplyFast review flagging remittance lines that need attention, with the reason for each." data-caption="Resolve: flagged lines are skipped with a reason, never guessed.">
-              <span class="step-num">3</span><span><b>Resolve</b><span class="step-text">Correct unmatched, duplicate, ambiguous, or invalid references before applying.</span></span></button></li>
             <li role="presentation"><button class="step" type="button" role="tab" id="tab-apply" aria-controls="workflowPanel" aria-selected="false" tabindex="-1" data-img="demo-results" data-alt="ApplyFast's results after Apply, listing each invoice that was applied." data-caption="Apply: ApplyFast ticks Apply and fills Payment and Disc. Taken on the approved rows.">
-              <span class="step-num">4</span><span><b>Apply</b><span class="step-text">Apply the intended payment amounts and discounts.</span></span></button></li>
+              <span class="step-num">3</span><span><b>Apply</b><span class="step-text">Apply the intended payment amounts and discounts. Lines that cannot be applied stay on the review.</span></span></button></li>
+            <li role="presentation"><button class="step" type="button" role="tab" id="tab-resolve" aria-controls="workflowPanel" aria-selected="false" tabindex="-1" data-img="demo-exception" data-alt="The ApplyFast review flagging remittance lines that need attention, with the reason for each." data-caption="Reconcile: exceptions stay available for Review &amp; Reconciliation, and you can export the Excel report.">
+              <span class="step-num">4</span><span><b>Reconcile</b><span class="step-text">Review &amp; Reconciliation explains the exceptions. Export the Excel report when you need to hand them off.</span></span></button></li>
             <li role="presentation"><button class="step" type="button" role="tab" id="tab-save" aria-controls="workflowPanel" aria-selected="false" tabindex="-1" data-img="demo-saved" data-alt="The saved customer payment in the demo, with the applied invoices and totals." data-caption="Save: you check the totals and save the payment yourself. ApplyFast never saves.">
               <span class="step-num">5</span><span><b>Save</b><span class="step-text">Review the result and save the payment in NetSuite.</span></span></button></li>
           </ol>
@@ -495,18 +495,18 @@
         <div>
           <p class="eyebrow dark">Automation with control</p>
           <h2 id="excTitle">Built for real-world remittances</h2>
-          <p class="lead">Not every remittance is perfect. ApplyFast helps identify references that need attention before you apply the payment.</p>
+          <p class="lead">Not every remittance is perfect. ApplyFast identifies references that need attention. What can be applied still applies. The rest stays for reconciliation.</p>
           <ul class="issues">
             <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Unmatched reference</b><span>Not found in the loaded invoice rows. Skipped and reported.</span></li>
             <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Duplicate reference</b><span>The same invoice listed twice. Both lines are held back.</span></li>
             <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Similar invoice numbers</b><span>A partial or ambiguous match is never guessed.</span></li>
             <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Invalid amount</b><span>An amount like <code>2,5OO.00</code> is skipped, not applied in full.</span></li>
           </ul>
-          <ol class="loop" aria-label="How exceptions are resolved">
+          <ol class="loop" aria-label="How exceptions are handled">
             <li><span>Review</span></li>
-            <li class="is-warn"><span>Correct</span></li>
-            <li><span>Review again</span></li>
             <li class="is-ok"><span>Apply</span></li>
+            <li class="is-warn"><span>Reconcile</span></li>
+            <li><span>Export</span></li>
           </ol>
           <div class="split-cta"><a class="text-link" id="tryExceptions" href="demo/demo.html?scenario=exceptions">Try a messy remittance in the demo <span class="arrow" aria-hidden="true">&rarr;</span></a></div>
         </div>
@@ -539,8 +539,9 @@
             <li><svg class="ico"><use href="#i-check"/></svg>Full, partial and discounted payments</li>
             <li><svg class="ico"><use href="#i-check"/></svg>Accounting-format zero discounts</li>
             <li><svg class="ico"><use href="#i-check"/></svg>Unmatched, duplicate and similar references</li>
-            <li><svg class="ico"><use href="#i-check"/></svg>Correcting and re-reviewing a remittance</li>
-            <li><svg class="ico"><use href="#i-check"/></svg>Multi-Page scanning (Premium)</li>
+            <li><svg class="ico"><use href="#i-check"/></svg>Reviewing reconciliation results and exporting the reconciliation report</li>
+            <li><svg class="ico"><use href="#i-check"/></svg>Multi-page scanning</li>
+            <li><svg class="ico"><use href="#i-check"/></svg>Review &amp; Reconciliation (Premium)</li>
             <li><svg class="ico"><use href="#i-check"/></svg>Reset and the time-savings story</li>
           </ul>
           <a class="btn btn-primary" id="launchDemo" href="demo/demo.html">Launch Interactive Demo <span class="arrow" aria-hidden="true">&rarr;</span></a>
@@ -549,13 +550,13 @@
       </div>
     </section>
 
-    <!-- Premium: Multi-Page -->
+    <!-- Multi-page cash application -->
     <section class="section" id="premium" aria-labelledby="premiumTitle">
       <div class="wrap">
         <div class="premium-panel split">
           <div>
-            <p class="badge-premium"><span aria-hidden="true">&#10022;</span> ApplyFast Premium</p>
-            <h2 id="premiumTitle">When one page isn't enough.</h2>
+            <p class="eyebrow dark">Cash application</p>
+            <h2 id="premiumTitle">This page, or every page.</h2>
             <p class="lead">Scan and apply across multiple invoice pages before building the application plan.</p>
             <ul class="checks">
               <li><svg class="ico"><use href="#i-check"/></svg>Scans every page of the Invoices list, then returns to the page you started on</li>
@@ -565,7 +566,7 @@
             </ul>
             <div class="modes">
               <div class="mode"><b>This page only</b><span>Free</span></div>
-              <div class="mode is-premium"><b>All pages</b><span>Licensed feature in the real extension</span></div>
+              <div class="mode"><b>All pages</b><span>Free</span></div>
             </div>
             <div class="premium-ctas">
               <a class="btn btn-navy" id="tryMultiPage" href="demo/demo.html?scenario=multipage">Try Multi-Page in the Interactive Demo <span class="arrow" aria-hidden="true">&rarr;</span></a>
@@ -667,14 +668,14 @@
       <div class="wrap">
         <div class="section-head center">
           <p class="eyebrow dark">Pricing</p>
-          <h2 id="pricingTitle">Start free. Upgrade when one page isn't enough.</h2>
-          <p>ApplyFast is free to install. Premium unlocks All pages.</p>
+          <h2 id="pricingTitle">Cash Application is free. Upgrade for Review &amp; Reconciliation.</h2>
+          <p>ApplyFast is free to install. Premium is Review &amp; Reconciliation, not more pages.</p>
         </div>
         <div class="plans">
           <div class="plan" id="planFree">
             <p class="plan-tier">Free</p>
-            <h3>This Page Only</h3>
-            <p class="plan-desc">Use ApplyFast on the current invoice page.</p>
+            <h3>Cash Application</h3>
+            <p class="plan-desc">Free on this page and across all invoice pages.</p>
             <p class="plan-price">$0</p>
             <ul class="checks">
               <li><svg class="ico"><use href="#i-check"/></svg>Paste, Review, Apply and Reset</li>
@@ -686,8 +687,8 @@
           </div>
           <div class="plan is-premium" id="planPremium">
             <p class="plan-tier"><span aria-hidden="true">&#10022;</span> Premium</p>
-            <h3>All Pages</h3>
-            <p class="plan-desc">Scan and apply across multiple pages.</p>
+            <h3>Review &amp; Reconciliation</h3>
+            <p class="plan-desc">Reconciliation analysis on top of free cash application.</p>
             <div class="prices">
               <div class="price"><span>Monthly</span><b>$14.99</b><small>per month</small></div>
               <div class="price"><span>Yearly</span><b>$119</b><small>per year</small></div>
@@ -695,15 +696,15 @@
             </div>
             <ul class="checks">
               <li><svg class="ico"><use href="#i-check"/></svg>Everything in Free</li>
-              <li><svg class="ico"><use href="#i-check"/></svg>Scan every page of the Invoices list</li>
-              <li><svg class="ico"><use href="#i-check"/></svg>Review and apply across pages in one run</li>
-              <li><svg class="ico"><use href="#i-check"/></svg>Activated from the ApplyFast icon in Chrome</li>
+              <li><svg class="ico"><use href="#i-check"/></svg>Reconciliation labels, with partial, short, and overpayment analysis</li>
+              <li><svg class="ico"><use href="#i-check"/></svg>Diff and variance, analytical remarks, and a reconciliation verdict</li>
+              <li><svg class="ico"><use href="#i-check"/></svg>Filters, exception counts, and an Excel reconciliation report</li>
             </ul>
             <a class="btn btn-navy" id="premiumGet" href="https://getapplyfast.lemonsqueezy.com/checkout/buy/0d77d600-49f5-471f-bfe4-1792f51f5371" target="_blank" rel="noopener noreferrer">Buy ApplyFast Premium</a>
-            <p class="plan-foot">Install ApplyFast, then buy a license and activate it from the ApplyFast icon in the Chrome toolbar. <a href="demo/demo.html?scenario=multipage">Try All pages in the demo first.</a></p>
+            <p class="plan-foot">Install ApplyFast, then buy a license and activate it from the ApplyFast icon in the Chrome toolbar. <a href="demo/demo.html">The demo can show Review &amp; Reconciliation.</a></p>
           </div>
         </div>
-        <p class="pricing-note">Licenses are sold and checked through Lemon Squeezy; ApplyFast never handles your payment details. Users updating from an earlier version can use All pages for 30 days before a license is needed.</p>
+        <p class="pricing-note">Licenses are sold and checked through Lemon Squeezy; ApplyFast never handles your payment details. A 14-day trial of Review &amp; Reconciliation only starts after a clean successful Apply, and only if you confirm it. Cash application remains free, and all pages remain free. After the trial ends, only Review &amp; Reconciliation locks.</p>
       </div>
     </section>
 
@@ -819,7 +820,7 @@
                 <li><strong>This page only</strong> - Preview and Apply use the rows currently loaded on the Invoices subtab. This is the quickest option when all the open transactions you need are on the page shown.</li>
                 <li><strong>All pages</strong> - For lists that NetSuite splits across several pages. ApplyFast scans every page first, then previews and applies across all scanned pages.</li>
               </ul>
-              <p>This page only is free. All pages is an ApplyFast Premium feature and requires an ApplyFast license, activated from the ApplyFast icon in the Chrome toolbar. Users updating from an earlier version can use All pages for 30 days before a license is needed.</p>
+              <p>Both This page only and All pages are free cash application. Review &amp; Reconciliation is ApplyFast Premium.</p>
             </div>
           </details>
           <details>
@@ -911,12 +912,12 @@
             <summary>Does ApplyFast send my data anywhere?</summary>
             <div class="doc-body">
               <p>Your NetSuite data stays in your browser. Invoice numbers, amounts, customer information and other page contents are processed locally and are not sent to ApplyFast or any other service; ApplyFast has no server of its own. The values ApplyFast fills in are saved by NetSuite only when you click Save.</p>
-              <p>The one exception is licensing. If you activate a license, your license key is sent to Lemon Squeezy, ApplyFast's license provider, to activate it, re-check it about once a day and deactivate it. These requests contain no NetSuite data. If you only use This page only mode and never activate a license, ApplyFast makes no network requests. See the <a href="privacy-policy.html">Privacy Policy</a>.</p>
+              <p>The one exception is licensing. If you activate a license, your license key is sent to Lemon Squeezy, ApplyFast's license provider, to activate it, re-check it about once a day and deactivate it. These requests contain no NetSuite data. If you never activate a license, ApplyFast makes no network requests. Only license checks go to Lemon Squeezy. See the <a href="privacy-policy.html">Privacy Policy</a>.</p>
             </div>
           </details>
           <details>
             <summary>Is the interactive demo a real NetSuite account?</summary>
-            <div class="doc-body"><p>No. The ApplyFast Cash Application Demo is a fictional, simulated Customer Payment page that runs the real ApplyFast panel in your browser. It uses fictional data, is not an Oracle NetSuite environment, and saves nothing anywhere. All pages is unlocked in the demo so you can try it; in the real extension it is a licensed feature.</p></div>
+            <div class="doc-body"><p>No. The ApplyFast Cash Application Demo is a fictional, simulated Customer Payment page that runs the real ApplyFast panel in your browser. It uses fictional data, is not an Oracle NetSuite environment, and saves nothing anywhere. This page and all pages are free in the real extension. The demo can also show Review &amp; Reconciliation, which is Premium.</p></div>
           </details>
           <details>
             <summary>What happens if a reference is ambiguous?</summary>
@@ -929,6 +930,10 @@
           <details>
             <summary>What is the difference between This page only and All pages?</summary>
             <div class="doc-body"><p><strong>This page only</strong> previews and applies the rows currently loaded in NetSuite. <strong>All pages</strong> first scans every page of the Invoices list, then previews and applies across all scanned pages, switching pages for you and returning to your starting page after a successful run.</p></div>
+          </details>
+          <details>
+            <summary>How does the Review &amp; Reconciliation trial work?</summary>
+            <div class="doc-body"><p>After a clean successful Apply, ApplyFast can offer a 14-day trial of Review &amp; Reconciliation only, and it starts only if you confirm. Cash application remains free, on this page and across all pages. When the trial ends, only Review &amp; Reconciliation locks.</p></div>
           </details>
           <details>
             <summary>What happens if something changes after Preview?</summary>
