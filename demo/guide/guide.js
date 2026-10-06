@@ -1,7 +1,7 @@
 // ApplyFast Interactive Demo guide. Tells the story beside the simulated Customer Payment page,
 // which runs the real ApplyFast panel in an iframe. The guide only observes that page (panel state,
 // pasted text, page rows) and never drives ApplyFast's matching, edits, applies or saves; the visitor does.
-// The one exception: it enters the required Payment Received from the pasted remittance (fillPaymentReceived).
+// The one exception: it enters Payment Received from the pasted remittance when the scenario provides it (fillPaymentReceived).
 (function () {
   'use strict';
 
@@ -158,7 +158,7 @@
   }
 
 
-  // Payment Received is required before ApplyFast reviews. The demo enters the pasted remittance's payment
+  // Payment Received is optional before ApplyFast reviews. The demo enters the pasted remittance's payment
   // total, as the visitor would from the deposit, unless the visitor has typed their own amount.
   let autoCash = '';
   function fillPaymentReceived(st) {
@@ -601,12 +601,15 @@
   function closePayoff(quiet) {
     const layer = document.getElementById('tourPayoff');
     if (!layer) return;
+    // Move focus out before removing the layer so Escape (and Playwright's
+    // keyboard.press) is not mid-flight on a node that is about to be detached.
+    const link = document.getElementById('tourPayoffLink');
+    if (!quiet && link) link.focus({ preventScroll: true });
+    else if (document.activeElement && layer.contains(document.activeElement)) {
+      try { document.activeElement.blur(); } catch (e) { /* ignore */ }
+    }
     layer.remove();
     if (savedPhase === 'payoff') savedPhase = 'done';
-    if (!quiet) {
-      const link = document.getElementById('tourPayoffLink');
-      if (link) link.focus({ preventScroll: true });
-    }
   }
 
   /* ---------- Views ---------- */
@@ -688,6 +691,7 @@
         ${scenario.highlight ? multipageHtml() : ''}
         <p class="tour-lead">${esc(scenario.intro)}</p>
         ${scenario.introMore ? `<p>${esc(scenario.introMore)}</p>` : ''}
+        ${scenario.id === 'exceptions' ? '<p class="tour-muted">Duplicate references block the run until you combine or remove them.</p>' : ''}
         ${pages}
       </section>`;
   }
@@ -776,7 +780,7 @@
         return '<p>This remittance only needs the current page. In the ApplyFast panel, choose <b>This page only</b>.</p>';
       case 'review':
         return '<p>ApplyFast already turned your Excel rows into lines it understands. Click <b>Review Cash Application</b>. Nothing is written yet.</p>' +
-          '<p class="tour-muted">Payment Received is required. In this demo it is entered for you' +
+          '<p class="tour-muted">Payment Received is optional. In this demo it is entered for you' +
           (scenario.paymentReceived ? ', as the cash that arrived.' : ': the remittance\u2019s payment total.') + '</p>';
       case 'filters':
         return filterWalkHtml(st);

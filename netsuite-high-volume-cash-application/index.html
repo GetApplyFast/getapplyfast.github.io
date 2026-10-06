@@ -73,7 +73,7 @@
 
     <h2>What ApplyFast does on that screen</h2>
     <ol>
-      <li>Paste invoice / PO references from Excel (two columns: Ref | Amount, or three: Ref | Discount | Amount).</li>
+      <li>Paste invoice / PO references from Excel (two columns: Ref | Amount, or three: Ref | Discount | Amount). Paste each reference once. A plain reference applies Amt. Due; a PO or group reference can tick several rows; <code>REF=amount</code> is a running cap, and rows after the amount is used up show <em>Cap used</em> (0.00 paid, Amt. Due still open in the report).</li>
       <li>Review every match and exception before anything is written.</li>
       <li>Apply matching lines on the current page or across pages (All pages scan, up to 20 pages).</li>
       <li>You check the totals and click Save in NetSuite yourself. ApplyFast never clicks Save.</li>

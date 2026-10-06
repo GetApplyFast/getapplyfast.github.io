@@ -740,6 +740,8 @@
 #applyFastBox .af-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .9px; color: var(--af-navy); text-transform: uppercase; }
 #applyFastBox .af-label { display: block; margin: 0 0 5px; padding: 0; font-size: 11px; font-weight: 700; letter-spacing: .6px; color: var(--af-sub); text-transform: uppercase; }
 #applyFastBox .af-help { margin: -3px 0 5px; font-size: 12px; color: var(--af-sub); }
+#applyFastBox #afCashHelp,
+#applyFastBox #afRefsHelp { max-height: none; overflow: visible; }
 #applyFastBox .af-steps { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; counter-reset: afstep; }
 #applyFastBox .af-steps li { counter-increment: afstep; flex: 1; display: flex; gap: 5px; align-items: center; font-size: 11px; color: var(--af-sub); line-height: 1.25; }
 #applyFastBox .af-steps li::before {
@@ -881,6 +883,8 @@
 #applyFastBox .af-st.bad::before { content: '\\2715'; }
 #applyFastBox .af-st.muted { background: #EEF2F6; color: var(--af-sub); }
 #applyFastBox .af-st.muted::before { content: '\\2022'; }
+#applyFastBox .af-st.slate { background: #E2E8F0; color: #334155; }
+#applyFastBox .af-st.slate::before { content: '\\2022'; }
 #applyFastBox .af-ow { display: flex; align-items: center; gap: 4px; margin: 3px 0 0; font-size: 11px; color: var(--af-sub); cursor: pointer; }
 #applyFastBox .af-recon { margin-top: 2px; font-size: 10.5px; font-weight: 700; color: var(--af-navy); }
 #applyFastBox .af-recon[data-recon="SHORT_PAYMENT"], #applyFastBox .af-recon[data-recon="OVERPAYMENT"],
@@ -919,6 +923,7 @@
 #applyFastBox .af-chip.bad { background: var(--af-bad-bg); border-color: #FECACA; color: var(--af-bad-ink); }
 #applyFastBox .af-chip.bad::before { content: '\\2715'; }
 #applyFastBox .af-chip.muted { color: var(--af-sub); }
+#applyFastBox .af-chip.slate { background: #E2E8F0; border-color: #CBD5E1; color: #334155; }
 #applyFastBox .af-progress { height: 8px; margin-top: 6px; border-radius: 999px; background: #E2E8F0; overflow: hidden; }
 #applyFastBox .af-progress > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--af-blue), var(--af-mint)); transition: width .25s ease; }
 #applyFastBox .af-notice { padding: 9px 11px; border-radius: 8px; background: var(--af-warn-bg); border: 1px solid #FDE68A; color: var(--af-warn-ink); white-space: pre-wrap; }
@@ -1066,23 +1071,25 @@
             </fieldset>
             <div id="afScan" style="display:none;"></div>
             <div id="afCash" class="af-cash">
-              <label class="af-label" for="afPaymentReceived">Payment Received <span class="af-req" aria-hidden="true">*</span></label>
-              <div class="af-help" id="afCashHelp">Required. Actual cash received from the customer. Apply never applies more than this and enters it as the NetSuite Payment Amount.</div>
-              <input id="afPaymentReceived" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1,000.00" required aria-required="true" aria-describedby="afCashHelp afCashMsg">
+              <label class="af-label" for="afPaymentReceived">Payment Received</label>
+              <div class="af-help" id="afCashHelp">Optional. Adding Payment Received caps the total ApplyFast applies and enables high-level cash application analysis in Review &amp; Reconciliation.</div>
+              <input id="afPaymentReceived" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1,000.00" aria-required="false" aria-describedby="afCashHelp afCashMsg">
               <div id="afCashMsg" class="af-help af-cash-msg" role="alert" hidden></div>
             </div>
             <div class="af-refs">
               <label class="af-label" for="matchListArea">Payment References</label>
-              <div class="af-help" id="afRefsHelp">Paste invoice, PO, or sublist line references.</div>
-              <textarea id="matchListArea" aria-describedby="afRefsHelp" spellcheck="false" placeholder="INV12345=1250.00&#10;PO67890=439.26&#10;INV999|10.00|100.00&#10;&#10;Or paste Excel columns:&#10;Ref | Amount  or  Ref | Discount | Amount"></textarea>
+              <div class="af-help" id="afRefsHelp">Paste each reference once. Duplicates and two lines on the same invoice row block Preview and Apply.</div>
+              <textarea id="matchListArea" aria-describedby="afRefsHelp" spellcheck="false" placeholder="INV10021&#10;INV12345=1250.00&#10;PO67890=439.26&#10;INV999|10.00|100.00&#10;&#10;Or paste Excel columns:&#10;Ref | Amount  or  Ref | Discount | Amount"></textarea>
             </div>
             <details class="af-details">
               <summary>Formats and safety rules</summary>
               <div class="af-details-body">
-                <p><code>REF=100.00</code> payment &middot; <code>REF|discount|payment</code>. US amounts only. A <code>REF</code> without an amount is shown in the Review but never applied: every application needs an amount.</p>
+                <p>A plain <code>REF</code> applies its full Amt. Due. A PO or other non-invoice reference can tick every matching row. <code>REF=amount</code> is a running cap across those rows, top to bottom. An invoice number that matches several rows stays a multiple match and is not applied. <code>REF|disc|amount</code> still applies to one row. A group that runs past the 20-page scan limit is held. US amounts only.</p>
                 <p>2-column (Ref | Amount) and 3-column (Ref | Discount | Amount) Excel paste is converted automatically. A Discount of <code>0</code> or an accounting <code>-</code> means no discount.</p>
                 <p>Pasting a list or spreadsheet rows replaces the references in the box; Ctrl+Z undoes it. Select part of the text first to paste over just that part.</p>
-                <p>Invalid amounts, duplicate lines and partial or ambiguous matches are skipped, never guessed. Existing Payments are kept unless you choose to overwrite.</p>
+                <p>Paste each reference once. If the same reference appears on more than one pasted line, Preview and Apply stay blocked until you combine or remove the duplicates. Two different lines that land on the same invoice row are blocked the same way. Invalid amounts and partial matches are skipped, never guessed. Payment Received is optional. If it is empty, ApplyFast fills Payment Amount with the total applied. Adding Payment Received caps the total ApplyFast applies and enables high-level cash application analysis in Review &amp; Reconciliation (Premium). ApplyFast never clicks Save; you review and save in NetSuite. Existing Payments are kept unless you choose to overwrite.</p>
+                <p>Credit memos are not applied; ApplyFast works only on the Invoices list, and zero-due rows in a PO group are skipped.</p>
+                <p><strong>Glossary:</strong> Duplicate references (same reference on more than one pasted line; blocks the whole run until you combine or remove them) &middot; Multiple matches (an invoice number matches several rows; not applied) &middot; Unapplied cap leftover (amount left after a REF=amount running cap is applied top to bottom) &middot; Cap used (Matched, no application: reference amount used by rows above; a held line shows Held instead; Review and the Cash Application Report show 0.00 paid and applied, and the Amt. Due stays open) &middot; Held (every row of a multi-row line is left unapplied when one of its rows cannot be written) &middot; Skipped: no positive amount due (zero-due row inside a group; skipped with a note) &middot; This page only warning (PO or group may continue on other pages; use All pages for the whole group) &middot; Use REF=AMOUNT for multi-row references (pipe multi-row held) &middot; Matching rows may sit beyond the 20-page scan limit; held so a partial group is not applied.</p>
               </div>
             </details>
             <div class="af-review-row">
@@ -1234,18 +1241,23 @@
    * Supports formats:
    * - INV123=100.00 (invoice with payment amount)
    * - INV123|10.00|100.00 (invoice with discount and payment amount)
-   * - INV123 (no amount): matched and shown in the Review, never applied
-   * Parsing and validation live in applyfast-core.js. Invalid and duplicate lines are
-   * skipped and reported; an amount is never taken from Amt. Due, Payment Received or
-   * any other balance. Flow: parse -> read the Invoices rows once -> match in memory ->
+   * - INV123 (no amount / bare REF): matched and applies the full Amt. Due when readable
+   * Parsing and validation live in applyfast-core.js. Invalid lines and duplicate/overlap
+   * detectors block or skip as reported. Bare REF takes Amt. Due; Payment Received is optional
+   * and caps Apply when provided. Flow: parse -> read the Invoices rows once -> match in memory ->
    * plan -> write. No sublist reads happen between writes.
    ***********************/
   function parseInput() {
     const core = globalThis.ApplyFastCore;
-    if (!core) return { valid: [], skipped: [], coreMissing: true };
+    if (!core) return { valid: [], skipped: [], blocks: [], coreMissing: true };
     const area = document.getElementById('matchListArea');
-    const { entries, valid } = core.parseInput(area ? area.value : '');
-    return { valid, skipped: entries.filter(e => e.status !== 'OK'), coreMissing: false };
+    const parsed = core.parseInput(area ? area.value : '');
+    return {
+      valid: parsed.valid,
+      skipped: parsed.entries.filter(e => e.status !== 'OK'),
+      blocks: parsed.blocks || [],
+      coreMissing: false
+    };
   }
 
   function skipReason(result) {
@@ -1342,9 +1354,13 @@
   // Rows written between yields to the browser. 0 = single pass (no progress/Stop).
   const APPLY_CHUNK_SIZE = 50;
 
+  // Display labels of a matched row's write status (chips in both modes). Every status core can put on a
+  // matched row has a label; the reason line under the chip keeps the exact wording.
   const STATUS_LABELS = {
     READY: 'Ready', ALREADY_APPLIED: 'Already applied', HAS_PAYMENT: 'Has Payment', HAS_DISCOUNT: 'Has Discount',
-    INCONSISTENT: 'Inconsistent', UNREADABLE: 'Unreadable', CHANGED: 'Changed since Preview'
+    INCONSISTENT: 'Inconsistent', UNREADABLE: 'Unreadable', CHANGED: 'Changed since Preview',
+    CAP_NOT_REACHED: 'Cap used', SKIPPED_NO_DUE: 'Skipped', UNPLANNABLE: 'Not written',
+    MOVED: 'Row moved', NOT_WRITABLE: 'Not writable'
   };
 
   let preview = null;
@@ -1365,10 +1381,10 @@
   }
 
   const OP_STATUS = {
-    idle: ['Idle', 'Enter Payment Received and paste payment references, then review the cash application.', 'Nothing has been written yet.'],
+    idle: ['Idle', 'Paste payment references, then review the cash application. Payment Received is optional.', 'Nothing has been written yet.'],
     idleMulti: ['Idle', 'Scan all pages first, then paste payment references.', 'Nothing has been written yet.'],
     scanning: ['Scanning', 'Reading every page. You can stop at any time.', 'Nothing has been written yet.'],
-    ready: ['Ready to review', 'All pages scanned. Enter Payment Received and paste references, then review.', 'Nothing has been written yet.'],
+    ready: ['Ready to review', 'All pages scanned. Paste references, then review. Payment Received is optional.', 'Nothing has been written yet.'],
     previewed: ['Previewed', 'Review each status. Apply when ready.', 'Nothing has been written yet.'],
     applying: ['Applying', 'Writing payments. Stop is available.', 'Applying now. ApplyFast never saves.'],
     resetting: ['Resetting', 'Unticking the rows ApplyFast applied on each page.', 'Resetting now. ApplyFast never saves.'],
@@ -1432,7 +1448,7 @@
     if (applyRun || multiApply) return;
     const core = globalThis.ApplyFastCore;
     const area = document.getElementById('matchListArea');
-    const { valid, skipped: invalid, coreMissing } = parseInput();
+    const { valid, skipped: invalid, blocks: parseBlocks, coreMissing } = parseInput();
     if (coreMissing) {
       console.error('ApplyFast: applyfast-core.js is not loaded');
       alert('ApplyFast could not load its parser. Please reload the page.');
@@ -1456,8 +1472,18 @@
     const t1 = performance.now();
     const rows = loadedRowValues(snapshot);
     const { scan, match } = core.matchLoadedPage(valid, { customerId: snapshot.customerId, rangeText: snapshot.rangeText, rows });
+    core.attachMatchBlocks(match, parseBlocks || [], (match.blocks || []).filter(b => b.type === 'OVERLAP'));
     const plan = core.buildPagePlan(match);
     const items = core.buildMultiApplyPlan(plan, scan);
+    // Multi-row on a multi-page list: warn that the group may continue elsewhere (do not hold).
+    if (core.listHasMultiplePages && core.listHasMultiplePages(snapshot.rangeText)) {
+      const groupWarn = core.THIS_PAGE_GROUP_WARN || '';
+      items.forEach(it => {
+        if (!it.multiRow || !groupWarn) return;
+        it.pageGroupWarning = groupWarn;
+        it.infoNote = it.infoNote ? (it.infoNote + '; ' + groupWarn) : groupWarn;
+      });
+    }
     // A row this page cannot write is held in the Review instead of being skipped at Apply.
     const byLine = new Map(rows.map(r => [r.lineIndex, r]));
     items.forEach(it => {
@@ -1547,14 +1573,14 @@
     const ctx = applyRun = {
       core, single: true, doc, items: final.items, recon: final.results, planned: toWrite.length, applied: 0, writing: 0,
       auto: { done: false, interrupted: '' }, stopRequested: false, completed: false, halt: '', returnNote: '', phase: 'Writing rows…',
-      appliedBefore: appliedTotal(doc), paymentDelta: 0, t0: performance.now()
+      appliedBefore: appliedTotal(doc), paymentDelta: 0, t0: performance.now(), capLeftover: final.capLeftover || 0
     };
     renderApplying(ctx);
     setPanelState('applying');
     setApplyingUi(true);
     renderApplyProgress(ctx);
     try {
-      if (enterPaymentAmount(ctx, final.cash)) {
+      if (enterPaymentAmount(ctx, final.cash, final.paymentAmountAuto)) {
         const written = await writeApplyUnits(ctx, toWrite, rowFor);
         ctx.completed = !ctx.halt && toWrite.every(it => it.result || written.includes(it));
         if (written.length) {
@@ -1603,12 +1629,14 @@
     const scanBox = document.getElementById('afScan');
     if (scanBox) scanBox.style.display = next === 'multi' ? 'block' : 'none';
     renderScan();
+    const box = document.getElementById('applyFastBox');
+    if (box) placeWorkspace(box, false);
   }
 
   /***********************
    * PAYMENT RECEIVED
    * ApplyFast's own field for the cash actually received, in both modes (free), and the one source of
-   * the cash amount. It is required: Review does not start and Apply is blocked (core.buildCashWritePlan)
+   * the cash amount. Optional: empty does not block Apply; INVALID still blocks (core.buildCashWritePlan)
    * until it is a valid amount. core.buildCashWritePlan limits the amounts Apply writes (a derived write
    * plan; the plan itself is unchanged), and Apply enters it as NetSuite's Payment Amount before any row
    * (enterPaymentAmount). Applied, Unapplied and To Apply are left to NetSuite.
@@ -1627,8 +1655,7 @@
     if (!input || !msg || !globalThis.ApplyFastCore) return;
     const cash = readPaymentReceived();
     if (cash.status === 'VALID') cashRequired = false;
-    const text = cash.status === 'INVALID' ? `${cash.reason}. The cash cannot be reconciled until this is corrected.`
-      : cash.status === 'EMPTY' && cashRequired ? 'Enter Payment Received, the cash received from the customer. It is required.' : '';
+    const text = cash.status === 'INVALID' ? `${cash.reason}. The cash cannot be reconciled until this is corrected.` : '';
     input.dataset.cashStatus = cash.status;
     if (text) input.setAttribute('aria-invalid', 'true');
     else input.removeAttribute('aria-invalid');
@@ -1636,9 +1663,9 @@
     msg.textContent = text;
   }
 
-  // Review in either mode starts only with a valid Payment Received; otherwise the field says why.
+  // Review may start with empty Payment Received; only an invalid amount is refused.
   function requirePaymentReceived() {
-    if (readPaymentReceived().status === 'VALID') return true;
+    if (readPaymentReceived().status !== 'INVALID') return true;
     cashRequired = true;
     renderCashInput();
     const input = document.getElementById('afPaymentReceived');
@@ -1655,6 +1682,10 @@
     const final = core.buildCashWritePlan({
       match: mp.match, plan: mp.plan, items: mp.items, scan, invalid: mp.invalid, actualCashReceived: cash.actualCashReceived
     });
+    final.capLeftover = core.groupCapLeftover ? core.groupCapLeftover(final.items) : 0;
+    if (final.cashInputStatus === 'NOT_PROVIDED' && final.paymentAmountAuto == null) {
+      final.paymentAmountAuto = (final.items || []).filter(it => it.willWrite).reduce((sum, it) => sum + (typeof it.payment === 'number' ? it.payment : 0), 0);
+    }
     return Object.assign({ cash }, final, { results: core.buildReconciliationResults(final) });
   }
 
@@ -1688,7 +1719,7 @@
     const reviewOnly = '<div class="af-note" style="margin-top:4px;">Applied below is limited by Payment Received, and Apply writes exactly those amounts. Apply enters Payment Received as the NetSuite Payment Amount.</div>';
     if (summary.cashInputStatus !== 'OK') {
       const why = summary.cashInputStatus === 'INVALID' ? 'Payment Received is not a valid amount. Correct it before applying.'
-        : 'Enter Payment Received to reconcile the cash received. It is required before applying.';
+        : 'Payment Received is empty. Apply will fill NetSuite Payment Amount with the total applied.';
       const title = premium ? 'Cash reconciliation: needs review' : 'Payment Received';
       return `<div class="af-sum warn" ${attrs}><b class="af-sum-title">${title}</b>` +
         `<div class="af-sum-sub">${esc(why)} The invoice statuses below are not affected.</div></div>`;
@@ -2233,21 +2264,24 @@
       showMultiMessage('Wait until NetSuite has finished loading the page, then click Review Cash Application again.');
       return;
     }
-    const { valid, skipped: invalid } = parseInput();
+    const { valid, skipped: invalid, blocks: parseBlocks } = parseInput();
     if (!valid.length) {
       multiPreview = null;
       showMultiMessage(invalid.length ? 'No valid lines to preview.\n' + describeSkipped(invalid, 10) : 'Paste invoice numbers first.');
       return;
     }
     if (!requirePaymentReceived()) { multiPreview = null; clearPreview(); return; }
-    const match = core.matchAcrossPages(valid, scanRun.scan);
+    const scanCapped = !!(scanRun.auto && scanRun.auto.plan && scanRun.auto.plan.capped);
+    const planOpts = { scanCapped: scanCapped, scanCap: (scanRun.auto && scanRun.auto.plan && scanRun.auto.plan.cap) || 20 };
+    const match = core.matchAcrossPages(valid, scanRun.scan, planOpts);
     if (!match.ok) {
       multiPreview = null;
       showMultiMessage(match.reason + '.');
       return;
     }
-    const plan = core.buildPagePlan(match);
-    const items = core.buildMultiApplyPlan(plan, scanRun.scan);
+    core.attachMatchBlocks(match, parseBlocks || [], (match.blocks || []).filter(b => b.type === 'OVERLAP'));
+    const plan = core.buildPagePlan(match, planOpts);
+    const items = core.buildMultiApplyPlan(plan, scanRun.scan, planOpts);
     const area = document.getElementById('matchListArea');
     const loaded = scanRun.scan.pages.get(settle.range.start);
     multiPreview = { inputText: area ? area.value : '', match, plan, items, invalid, loadedStart: settle.range.start, loadedText: loaded ? loaded.rangeText : '' };
@@ -2264,18 +2298,27 @@
     EXACT: 'Exact', SHORT_PAYMENT: 'Partial/Short payment', OVERPAYMENT: 'Overpayment', PARTIAL_APPLICATION: 'Partial/Short payment',
     NOT_APPLIED: 'Not applied', NEEDS_REVIEW: 'Needs review', UNMATCHED: 'Unmatched'
   };
+  // Display labels of a line that was not planned (unmatched, held or blocked), in both modes.
   const UNMATCHED_LABELS = {
-    NOT_FOUND: 'Not found', MULTIPLE_MATCH: 'Multiple matches', CROSS_PAGE_GROUP: 'Held', PARTIAL_REF_MATCH: 'Partial match'
+    NOT_FOUND: 'Not found', MULTIPLE_MATCH: 'Multiple matches', CROSS_PAGE_GROUP: 'Held', PARTIAL_REF_MATCH: 'Partial match',
+    SCAN_CAP_GROUP: 'Held', PIPE_MULTI_ROW: 'Held', DUPLICATE_INPUT: 'Duplicate', OVERLAP: 'Overlap',
+    BLOCKED_RUN: 'Blocked', INVALID_INPUT: 'Skipped'
   };
+  const UNMATCHED_WARN = ['NOT_FOUND', 'MULTIPLE_MATCH', 'CROSS_PAGE_GROUP', 'SCAN_CAP_GROUP', 'PIPE_MULTI_ROW', 'DUPLICATE_INPUT', 'OVERLAP'];
 
   // The write decision of a reconciliation row (safety), kept apart from its reconStatus.
   function multiStatusHtml(row, i) {
     const w = row.write;
     let label, tone;
-    if (row.rowType === 'UNMATCHED') { label = UNMATCHED_LABELS[row.safetyStatus] || 'Skipped'; tone = row.safetyStatus === 'NOT_FOUND' || row.safetyStatus === 'MULTIPLE_MATCH' || row.safetyStatus === 'CROSS_PAGE_GROUP' ? 'warn' : 'muted'; }
+    if (row.rowType === 'UNMATCHED') { label = UNMATCHED_LABELS[row.safetyStatus] || 'Skipped'; tone = UNMATCHED_WARN.includes(row.safetyStatus) ? 'warn' : 'muted'; }
     else if (w.willWrite) { label = w.overwrite ? 'Overwrite' : 'Ready'; tone = 'ok'; }
+    // A row that would be written but its multi-row line is held because another of its rows cannot be.
+    else if (w.lineHeld && (w.safetyStatus === 'READY' || w.safetyStatus === 'CAP_NOT_REACHED' || (w.overwritable && w.overwrite))) { label = 'Held'; tone = 'warn'; }
     else if (w.safetyStatus === 'UNPLANNABLE' || w.cashHeld) { label = 'Not written'; tone = 'warn'; }
-    else { label = STATUS_LABELS[w.safetyStatus] || w.safetyStatus; tone = w.safetyStatus === 'ALREADY_APPLIED' ? 'muted' : 'warn'; }
+    else {
+      label = STATUS_LABELS[w.safetyStatus] || 'Not written';
+      tone = w.safetyStatus === 'ALREADY_APPLIED' || w.safetyStatus === 'SKIPPED_NO_DUE' ? 'muted' : w.safetyStatus === 'CAP_NOT_REACHED' ? 'slate' : 'warn';
+    }
     const toggle = w.overwritable && i !== undefined
       ? ` <label class="af-ow"><input type="checkbox" data-ow="${i}"${w.overwrite ? ' checked' : ''}> overwrite</label>` : '';
     return `<span class="af-st ${tone}">${esc(label)}</span>${toggle}`;
@@ -2356,7 +2399,7 @@
     const canApply = writes.length > 0 && !final.applyBlocked;
     const canExport = results.rows.length > 0 && !final.applyBlocked;
     const premium = licenseActive(REVIEW_RECONCILIATION);
-    const applyLabel = final.applyBlocked ? (final.cashInputStatus === 'INVALID' ? 'Correct Payment Received to apply' : 'Enter Payment Received to apply')
+    const applyLabel = final.applyBlocked ? (final.cashInputStatus === 'INVALID' ? 'Correct Payment Received to apply' : (final.blockedReason || 'Fix issues before applying'))
       : !writes.length ? 'Nothing to apply'
       : single ? `Apply ${plural(writes.length, 'Payment', 'Payments')}`
       : `Apply ${plural(writes.length, 'Payment', 'Payments')} on ${plural(writePages, 'Page', 'Pages')}`;
@@ -2381,6 +2424,7 @@
       const applied = r.applicationAmount === null ? '-' : money(r.applicationAmount);
       const disc = r.discountTaken ? `<div class="af-sub-line">Disc. ${esc(money(r.discountTaken))}</div>` : '';
       const limited = r.write.willWrite && r.write.cashLimited ? `<div class="af-sub-line">Limited by Payment Received (planned ${esc(money(r.requestedAmount))})</div>` : '';
+      const groupWarn = it && it.pageGroupWarning ? `<div class="af-sub-line af-warn-text">${esc(it.pageGroupWarning)}</div>` : '';
       const written = r.write.willWrite && Math.round(r.write.payment * 100) !== Math.round(r.applicationAmount * 100)
         ? `<div class="af-sub-line">Apply writes ${esc(money(r.write.payment))}</div>` : '';
       const diff = premium && r.invoiceDifference ? `<div class="af-sub-line">Diff. ${esc(money(r.invoiceDifference))}</div>` : '';
@@ -2397,7 +2441,7 @@
         `<td>${identity}</td><td class="num">${due}</td><td class="num">${money(r.requestedAmount)}</td>` +
         `<td class="num af-applied">${applied}${disc}${limited}${written}</td><td class="num">${money(r.remainingInvoiceBalance)}${diff}</td>` +
         `<td>${multiStatusHtml(r, index)}${premium ? reconStatusHtml(r) : ''}` +
-        `${reason ? `<div class="af-sub-line af-reason">${esc(reason)}</div>` : ''}${note}${extra}</td></tr>`;
+        `${reason ? `<div class="af-sub-line af-reason">${esc(reason)}</div>` : ''}${note}${extra}${groupWarn}</td></tr>`;
     };
     const invoiceShown = shown.filter(r => r.rowType === 'INVOICE');
     const unmatchedShown = shown.filter(r => r.rowType === 'UNMATCHED');
@@ -2436,7 +2480,13 @@
     const oldTable = box.querySelector(`#${tableId}`);
     const scrollTop = oldTable ? oldTable.scrollTop : 0;
     const boxScrollTop = box.scrollTop;
+    const blockBanner = (rv.match && rv.match.blocked && rv.match.blockMessages && rv.match.blockMessages.length)
+      ? `<div class="af-sum-warn" role="alert" style="margin-bottom:8px;">${rv.match.blockMessages.map(m => esc(m)).join('<br>')}<div class="af-note" style="margin-top:4px;">Nothing will be written until you fix the paste and preview again.</div></div>`
+      : ((rv.plan && rv.plan.blocked && rv.plan.blockMessages && rv.plan.blockMessages.length)
+        ? `<div class="af-sum-warn" role="alert" style="margin-bottom:8px;">${rv.plan.blockMessages.map(m => esc(m)).join('<br>')}<div class="af-note" style="margin-top:4px;">Nothing will be written until you fix the paste and preview again.</div></div>`
+        : '');
     box.innerHTML = `
+      ${blockBanner}
       ${summaryHtml}
       ${cashSummaryHtml(results, premium)}
       ${overwritable ? `<label class="af-ow-all"><input type="checkbox" id="afOverwriteAll"${items.every(it => !it.state.overwritable || it.overwrite) ? ' checked' : ''}> Overwrite all ${overwritable} row(s) that already have a different Payment or Discount</label>` : ''}
@@ -2494,7 +2544,7 @@
 
   const RESULT_LABELS = {
     APPLIED: 'Applied', ADJUSTED: 'Adjusted', NOT_CONFIRMED: 'Not confirmed', CHANGED: 'Changed since Preview',
-    MOVED: 'Row moved', NOT_WRITTEN: 'Not written', HELD: 'Held', BLOCKED: 'Blocked', ALREADY: 'Already applied',
+    MOVED: 'Row moved', NOT_WRITTEN: 'Not written', HELD: 'Held', CAP_USED: 'Cap used', BLOCKED: 'Blocked', ALREADY: 'Already applied',
     SKIPPED: 'Skipped', ERROR: 'Error while writing'
   };
   const APPLY_INPUT_TEXTS = {
@@ -2514,24 +2564,27 @@
   // only header field Apply writes; Applied, Unapplied and To Apply are calculated by NetSuite. With Payment
   // Amount populated NetSuite limits the line applications to it, and the write plan never exceeds it.
   // Returns false (with ctx.halt set) when the field is missing or NetSuite does not keep the amount.
-  function enterPaymentAmount(ctx, cash) {
+  function enterPaymentAmount(ctx, cash, autoAmount) {
     const core = ctx.core;
     const visible = ctx.doc.getElementById('payment_formattedValue');
     const hidden = ctx.doc.getElementById('payment');
     const field = visible || hidden;
-    if (cash.status !== 'VALID') { ctx.halt = 'Payment Received is required before applying'; return false; }
+    let value = null;
+    if (cash && cash.status === 'VALID') value = cash.value;
+    else if (typeof autoAmount === 'number' && autoAmount >= 0) value = autoAmount;
+    else { ctx.halt = 'Payment Amount could not be set before applying'; return false; }
     if (!field) { ctx.halt = 'The NetSuite Payment Amount field was not found'; return false; }
     const read = () => {
       const parsed = core.parseAmountStrict(String((hidden || visible).value || '').trim() || '0');
       return parsed.ok ? Math.round(parsed.value * 100) : null;
     };
-    const want = Math.round(cash.value * 100);
+    const want = Math.round(value * 100);
     if (read() === want) return true;
-    field.value = fmtUS(cash.value);
+    field.value = fmtUS(value);
     field.focus();
     ['input', 'change', 'blur'].forEach(type => field.dispatchEvent(new Event(type, { bubbles: true })));
     if (read() !== want) {
-      ctx.halt = `NetSuite did not keep Payment Received ${fmtUS(cash.value)} as the Payment Amount`;
+      ctx.halt = 'NetSuite did not keep Payment Amount ' + fmtUS(value);
       return false;
     }
     return true;
@@ -2844,7 +2897,7 @@
       expected: { customerId: run0.scan.customerId, total: coverage.total, pageSize: first.end - first.start + 1 },
       start: { start: range.start, end: range.end, text: startRecord.rangeText },
       items: final.items, recon: final.results, pages, planned, applied: 0, pageNo: 0, phase: 'Starting…', writing: 0, halt: '', returnNote: '',
-      appliedBefore: appliedTotal(run0.doc), paymentDelta: 0, t0: performance.now()
+      appliedBefore: appliedTotal(run0.doc), paymentDelta: 0, t0: performance.now(), capLeftover: final.capLeftover || 0
     };
     watchUserInput(ctx, APPLY_INPUT_TEXTS);
 
@@ -2853,7 +2906,7 @@
     setApplyingUi(true);
     renderApplyProgress(ctx);
     try {
-      if (enterPaymentAmount(ctx, final.cash)) await runMultiApply(ctx);
+      if (enterPaymentAmount(ctx, final.cash, final.paymentAmountAuto)) await runMultiApply(ctx);
     } catch (e) {
       console.error('ApplyFast multi-page apply error', e);
       if (!ctx.halt) ctx.halt = 'An unexpected error occurred';
@@ -2887,8 +2940,7 @@
     ctx.items.forEach(it => {
       if (it.result) return;
       if (it.willWrite) setResult(it, 'NOT_WRITTEN', kind === 'STOPPED' ? 'Apply was stopped before this row' : 'Apply halted before this row');
-      else if (it.state.status === 'ALREADY_APPLIED') setResult(it, 'ALREADY', it.note);
-      else setResult(it, 'BLOCKED', it.note);
+      else setResult(it, ctx.core.unwrittenResultStatus(it), it.note);
     });
     const appliedAfter = appliedTotal(ctx.doc);
     const totalMismatch = ctx.appliedBefore !== null && appliedAfter !== null &&
@@ -2914,7 +2966,7 @@
     const core = ctx.core;
     const box = document.getElementById('afPreview');
     if (!box) return;
-    const tones = { APPLIED: 'ok', ALREADY: 'muted', SKIPPED: 'muted', NOT_CONFIRMED: 'bad', ERROR: 'bad' };
+    const tones = { APPLIED: 'ok', ALREADY: 'muted', SKIPPED: 'muted', CAP_USED: 'slate', NOT_CONFIRMED: 'bad', ERROR: 'bad' };
     const tone = s => tones[s] || 'warn';
     const { rows, counts } = core.reconciliationApplyResults(ctx.recon, ctx.items);
     const itemById = new Map(ctx.items.map(it => [it.id, it]));
@@ -2945,7 +2997,7 @@
       `<td>${esc(r.reference || r.raw)}<div class="af-sub-line">Line ${r.lineNo}</div></td><td class="num">${money(r.requestedAmount)}</td><td colspan="2"></td>${statusHtml(r)}</tr>`).join('');
 
     const chipsHtml = Object.keys(RESULT_LABELS).filter(s => counts[s]).map(s => `<span class="af-chip ${tone(s)}">${RESULT_LABELS[s]} ${counts[s]}</span>`).join('');
-    const clean = kind === 'COMPLETE' && ctx.applied === ctx.planned && !info.totalMismatch && !ctx.returnNote;
+    const clean = kind === 'COMPLETE' && ctx.applied === ctx.planned && !info.totalMismatch && !ctx.returnNote && !(ctx.capLeftover > 0);
     const trialOffer = clean && trialDeclinedCtx !== ctx && !premium && !license.trialConsumed &&
       (license.status === 'unlicensed' || license.status === 'transition_ended');
     const trialWarning = license.status === 'trial' && license.trialWarningDue === true;
@@ -3160,7 +3212,7 @@
   }
 
   // Visits the other pages with the multi-page Apply page switch, unticks each page's rows the same
-  // way as on the loaded page, then returns to the starting page. Returns the records not reached.
+  // way as on the loaded page, then returns to the starting page. Returns the records it did not get to.
   async function untickOtherPages(core, records, out) {
     const ctx = resetRun = {
       core, doc: getFrameWithInputs().doc, settle: null, firstRow: null, rowGen: 0,

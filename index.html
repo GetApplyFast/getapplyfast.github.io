@@ -28,6 +28,7 @@
     "operatingSystem": "Google Chrome",
     "url": "https://applyfast.store/",
     "description": "A Chrome extension that applies invoice references, partial payments, discounts and remittance advice on NetSuite's Accept Customer Payment screen, with a review before anything is written.",
+    "softwareVersion": "1.7",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free to install. Cash application is free on this page and across all pages." }
   }
   </script>
@@ -498,7 +499,7 @@
           <p class="lead">Not every remittance is perfect. ApplyFast identifies references that need attention. What can be applied still applies. The rest stays for reconciliation.</p>
           <ul class="issues">
             <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Unmatched reference</b><span>Not found in the loaded invoice rows. Skipped and reported.</span></li>
-            <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Duplicate reference</b><span>The same invoice listed twice. Both lines are held back.</span></li>
+            <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Duplicate reference</b><span>Paste each reference once. If the same reference appears on more than one pasted line, Preview and Apply stay blocked until you combine or remove the duplicates. Two different lines that land on the same invoice row are blocked the same way.</span></li>
             <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Similar invoice numbers</b><span>A partial or ambiguous match is never guessed.</span></li>
             <li class="issue"><b><svg class="ico"><use href="#i-alert"/></svg>Invalid amount</b><span>An amount like <code>2,5OO.00</code> is skipped, not applied in full.</span></li>
           </ul>
@@ -538,7 +539,7 @@
           <ul class="tries">
             <li><svg class="ico"><use href="#i-check"/></svg>Full, partial and discounted payments</li>
             <li><svg class="ico"><use href="#i-check"/></svg>Accounting-format zero discounts</li>
-            <li><svg class="ico"><use href="#i-check"/></svg>Unmatched, duplicate and similar references</li>
+            <li><svg class="ico"><use href="#i-check"/></svg>Unmatched, blocked duplicates and similar references</li>
             <li><svg class="ico"><use href="#i-check"/></svg>Reviewing reconciliation results and exporting the reconciliation report</li>
             <li><svg class="ico"><use href="#i-check"/></svg>Multi-page scanning</li>
             <li><svg class="ico"><use href="#i-check"/></svg>Review &amp; Reconciliation (Premium)</li>
@@ -654,7 +655,7 @@
           <div class="feature"><div class="feature-ico"><svg class="ico"><use href="#i-eye"/></svg></div><h3>Review before Apply</h3><p>See every row, amount and status before anything changes. Nothing is written until you click Apply.</p></div>
           <div class="feature"><div class="feature-ico"><svg class="ico"><use href="#i-table"/></svg></div><h3>Excel remittances</h3><p>Paste 2 columns (Ref | Amount) or 3 columns (Ref | Discount | Amount). A discount of <code>0</code> or an accounting <code>-</code> means no discount.</p></div>
           <div class="feature"><div class="feature-ico"><svg class="ico"><use href="#i-percent"/></svg></div><h3>Partial payments &amp; discounts</h3><p>Apply part of a balance with <code>INV12345=100.00</code>, or a discount with <code>INV12345|10.00|100.00</code>.</p></div>
-          <div class="feature"><div class="feature-ico"><svg class="ico"><use href="#i-target"/></svg></div><h3>Safe matching</h3><p>Matches Ref No., PO and other columns exactly. Invalid, duplicate and ambiguous lines are skipped and reported, never guessed.</p></div>
+          <div class="feature"><div class="feature-ico"><svg class="ico"><use href="#i-target"/></svg></div><h3>Safe matching</h3><p>Matches Ref No., PO and other columns exactly. Paste each reference once: duplicate keys and two lines on the same invoice row block Preview and Apply until you combine or remove them. Invalid and ambiguous lines are skipped and reported, never guessed. A PO or group reference can tick every matching row; <code>REF=amount</code> is a running cap top to bottom.</p></div>
           <div class="feature"><div class="feature-ico"><svg class="ico"><use href="#i-shield"/></svg></div><h3>Protects existing values</h3><p>Rows that already have a different Payment or discount are left alone unless you choose to overwrite them.</p></div>
           <div class="feature"><div class="feature-ico"><svg class="ico"><use href="#i-reset"/></svg></div><h3>Clean Reset</h3><p>Clear the remittance, the review and the rows ApplyFast ticked, and start again. Nothing saved in NetSuite is changed.</p></div>
           <div class="feature"><div class="feature-ico"><svg class="ico"><use href="#i-hand"/></svg></div><h3>You save, not ApplyFast</h3><p>ApplyFast only ticks Apply and fills Payment and Disc. Taken. You check the totals and click Save in NetSuite.</p></div>
@@ -762,9 +763,15 @@
           <details>
             <summary>Basic usage</summary>
             <div class="doc-body">
-              <p>Paste invoice references (one per line) into the text area. A reference without an amount is previewed for its remaining open balance (Amt. Due). Nothing is applied until you review the Preview and click Apply.</p>
+              <p>Paste invoice references (one per line) into the text area. A line without an amount applies the full Amt. Due on each matched row (one invoice, or every row for a PO or group reference). Nothing is applied until you review the Preview and click Apply.</p>
               <div class="example"><strong>Example:</strong><br><code>INV12345</code><br><code>PO67890</code><br><code>REF123</code></div>
               <p>Pasting a list or spreadsheet rows replaces the references already in the box; Ctrl+Z undoes it. Select part of the text first to paste over just that part. <strong>Reset</strong> clears the references, the review and the rows ApplyFast ticked, without changing anything saved in NetSuite.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Payment Received</summary>
+            <div class="doc-body">
+              <p>Payment Received is optional. If it is empty, ApplyFast fills Payment Amount with the total applied. Adding Payment Received caps the total ApplyFast applies and enables high-level cash application analysis in Review &amp; Reconciliation (Premium). ApplyFast never clicks Save; you review and save in NetSuite.</p>
             </div>
           </details>
           <details>
@@ -805,11 +812,11 @@
               <ul>
                 <li>Each reference is matched against the <strong>Ref No.</strong> first, then the <strong>PO</strong>, then other sublist columns (whole values only).</li>
                 <li>A reference that only partially matches a row is skipped. Use the exact Ref No.</li>
-                <li>A line with an amount or a discount must match exactly one row.</li>
-                <li>An Invoice reference that matches more than one row is skipped as <em>Multiple matches</em>.</li>
-                <li>A line without an amount that matches several non-Invoice rows (for example journals) is applied to all of them, each at its own Amt. Due. If any of those rows cannot be applied, none of them are.</li>
-                <li>A reference that appears on more than one line, or two lines that point to the same row, are skipped as duplicates.</li>
-                <li>Only the <strong>Invoices</strong> subtab is read. Credits are never applied.</li>
+                <li>A plain <code>REF</code> applies its full Amt. Due. A PO or other non-invoice reference can tick every matching row. <code>REF=amount</code> is a running cap across those rows, top to bottom.</li>
+                <li>An invoice number that matches several rows stays a <em>Multiple matches</em> and is not applied. <code>REF|disc|amount</code> still applies to one row.</li>
+                <li>Paste each reference once. If the same reference appears on more than one pasted line, Preview and Apply stay blocked until you combine or remove the duplicates. Two different lines that land on the same invoice row are blocked the same way.</li>
+                <li>A group that runs past the 20-page scan limit is held. With This page, a PO or group that may continue on other pages shows a warning, not a hold; use All pages to cover the whole group.</li>
+                <li>Only the <strong>Invoices</strong> subtab is read. Credits are never applied. Zero-due rows in a group are skipped with <em>Skipped: no positive amount due</em>.</li>
               </ul>
             </div>
           </details>
@@ -862,8 +869,14 @@
                 <li><strong>Inconsistent</strong> - Apply and Payment disagree on the row (for example values entered but Apply not ticked). Never written; fix the row in NetSuite.</li>
                 <li><strong>Unreadable</strong> - A current value on the row is not a US-format amount. Never written.</li>
                 <li><strong>Changed since Preview</strong> - The row changed after Preview. Not written; click Review Cash Application again.</li>
-                <li><strong>Skipped</strong> - The line was not applied. The reason is shown, for example: not found, only partially matches, multiple matches, duplicate line, invalid amount, Amt. Due is 0.00, or Disc. Taken not editable.</li>
-                <li><strong>Held</strong> (All pages) - A reference without an amount matches several non-Invoice rows on different pages. It is held because pages are applied one at a time and these rows must be applied all together or not at all.</li>
+                <li><strong>Skipped</strong> - The line was not applied. The reason is shown, for example: not found, only partially matches, Multiple matches, invalid amount, <em>Skipped: no positive amount due</em>, or Disc. Taken not editable.</li>
+                <li><strong>Duplicate references</strong> - The same reference on more than one pasted line; blocks the whole run until you combine or remove them. Two different lines that land on the same invoice row are blocked the same way.</li>
+                <li><strong>Multiple matches</strong> - An invoice number matches several rows; not applied.</li>
+                <li><strong>Unapplied cap leftover</strong> - Amount left after a <code>REF=amount</code> running cap is applied top to bottom.</li>
+                <li><strong>Cap used</strong> - The row matched a <code>REF=amount</code> or PO cap line, but rows above used the whole amount. Exact text: <em>Matched, no application: reference amount used by rows above</em>. On a held line every readable row shows Held instead. In Review and in the Cash Application Report the row shows 0.00 paid and applied, and its Amt. Due stays open.</li>
+                <li><strong>Skipped: no positive amount due</strong> - Zero-due row inside a group; skipped with a note.</li>
+                <li><strong>This page only warning</strong> - PO or group may continue on other pages; use All pages for the whole group. Exact text: <em>This page only: this group may continue on other pages. Use All pages to cover the whole group.</em></li>
+                <li><strong>Held</strong> (All pages) - A multi-row group that may sit beyond the 20-page scan limit is held so a partial group is not applied. Exact text: <em>Matching rows may sit beyond the 20-page scan limit; held so a partial group is not applied</em>. Pipe multi-row lines are held with <em>Use REF=AMOUNT for multi-row references</em>. In either mode, when one row of a multi-row line cannot be written (for example a negative Amt. Due), the other rows of that line show Held.</li>
               </ul>
               <p><strong>Results after an All pages Apply</strong></p>
               <ul>
@@ -874,7 +887,9 @@
                 <li><strong>Row moved</strong> - A different transaction is now at that position. Not written.</li>
                 <li><strong>Not written</strong> - Apply was stopped or halted before this row, or the row could not be written.</li>
                 <li><strong>Blocked</strong> - Matched, but not written because of its state at Preview (for example Has Payment without overwrite, Has Discount, Inconsistent or Unreadable).</li>
-                <li><strong>Already applied</strong>, <strong>Held</strong>, <strong>Skipped</strong> - As in Preview; not written.</li>
+                <li><strong>Cap used</strong> - As in Preview: on a line that was applied, rows above used the reference amount; not written. The report still shows 0.00 paid and applied, with the Amt. Due open.</li>
+                <li><strong>Held</strong> - As in Preview, including every row of a multi-row line that was held because one of its rows could not be written; not written.</li>
+                <li><strong>Already applied</strong>, <strong>Skipped</strong> - As in Preview; not written. A zero-due row keeps its note <em>Skipped: no positive amount due</em>.</li>
                 <li><strong>Error while writing</strong> - Something failed while writing this row. Check it in NetSuite.</li>
               </ul>
               <p>With <strong>This page only</strong>, results are grouped as <em>Applied</em>, <em>Adjusted by NetSuite</em> and <em>Not applied</em> (with the reason for each line). During an All pages scan, each page shows <em>Scanned</em>, <em>Not scanned</em> or <em>Scan again</em>.</p>
@@ -949,7 +964,7 @@
           </details>
           <details>
             <summary>Why are some lines Held or Blocked?</summary>
-            <div class="doc-body"><p><em>Held</em> lines match several non-Invoice rows spread over more than one page; they must be applied all together, which a page-by-page Apply cannot guarantee. <em>Blocked</em> rows matched but were not safe to write because of their state at Preview, such as an existing Payment you did not choose to overwrite, an existing discount, or inconsistent values. The reason is shown next to each line.</p></div>
+            <div class="doc-body"><p><em>Held</em> lines are multi-row groups that may sit beyond the 20-page scan limit; ApplyFast holds them so a partial group is not applied. A multi-row line is also held whole when one of its rows cannot be written, for example a negative Amt. Due; its other rows show Held. With This page, a PO or group that may continue on other pages shows a warning, not a hold; use All pages to cover the whole group. <em>Blocked</em> rows matched but were not safe to write because of their state at Preview, such as an existing Payment you did not choose to overwrite, an existing discount, or inconsistent values. <em>Cap used</em> rows matched a <code>REF=amount</code> or PO cap line that was applied, but rows above used the whole amount. The report shows 0.00 paid and applied, and the Amt. Due stays open. Zero-due rows show <em>Skipped</em>, not Blocked. The reason is shown next to each line.</p></div>
           </details>
         </div>
       </div>
@@ -965,9 +980,10 @@
         <div class="limits">
           <ul>
             <li><strong>US Number Format Only</strong> Amounts must use US number format (comma for thousands, dot for decimal). Lines with other formats are skipped as invalid.</li>
-            <li><strong>Credits Are Not Applied</strong> Only the Invoices subtab is read. Credits must still be applied manually.</li>
-            <li><strong>Ambiguous Matches Are Skipped</strong> Partial matches, Invoice references that match more than one row, and lines with an amount that match more than one row are skipped rather than guessed.</li>
-            <li><strong>Rows Spread Across Pages May Be Held</strong> In All pages mode, a reference without an amount whose matching non-Invoice rows are on different pages is held, and an Invoice reference found on more than one row is skipped. Apply these by hand or with a more specific reference.</li>
+            <li><strong>Credits Are Not Applied</strong> ApplyFast reads only the Invoices sublist. Credit memos are never applied. Zero-due rows in a PO group are skipped with <em>Skipped: no positive amount due</em>. A row with a negative Amt. Due holds that whole PO line, so nothing from it is applied.</li>
+            <li><strong>Duplicate References Block the Run</strong> Paste each reference once. If the same reference appears on more than one pasted line, or two lines land on the same invoice row, Preview and Apply stay blocked until you combine or remove them.</li>
+            <li><strong>Ambiguous Matches Are Not Guessed</strong> Partial matches and an invoice number that matches several rows (Multiple matches) are not applied. <code>REF|disc|amount</code> still needs one row. A PO or other non-invoice reference can tick several rows; <code>REF=amount</code> is a running cap top to bottom.</li>
+            <li><strong>Scan-Cap Groups May Be Held</strong> A group that runs past the 20-page scan limit is held so a partial group is not applied. With This page, a PO or group that may continue on other pages shows a warning, not a hold; use All pages to cover the whole group.</li>
             <li><strong>All Pages Needs a Complete Scan</strong> Review Cash Application (All pages) is only available after every page has been scanned. After any Apply, the scan and Preview are used up; the next batch needs a new scan and review.</li>
             <li><strong>20-Page Limit</strong> The automatic scan covers up to 20 pages, and one Apply can write to rows on up to 20 pages. Split larger batches.</li>
             <li><strong>Page Loading Timeout</strong> If a NetSuite page does not finish loading within 15 seconds during a scan or Apply, the operation stops. Rows already written stay written and are listed in the results.</li>

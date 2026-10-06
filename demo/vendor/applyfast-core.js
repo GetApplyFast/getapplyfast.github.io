@@ -43,8 +43,8 @@
 
   /**
    * Parses one input line. Supported formats:
-   *   REF                  no amount: matched and shown in Review, never applied (use REF=AMOUNT)
-   *   REF=payment          the payment to apply
+   *   REF                  bare reference: applied for the row's full Amt. Due
+   *   REF=payment          the payment to apply (group cap when the reference matches several rows)
    *   REF|discount|payment discount plus payment (blank, 0 or accounting "-" discount = no discount)
    */
   function parseLine(raw, lineNo) {
@@ -99,8 +99,27 @@
   }
 
   /**
-   * Parses the whole textarea. Empty lines are ignored. A reference that appears
-   * on more than one line is flagged DUPLICATE_INPUT on every line (never last-wins).
+   * Duplicate-reference banner. Keys are normalizeRef (trim + case-insensitive); INV1 and INV10
+   * are different keys and must not collide. Any format (bare / = / pipe) shares one key.
+   */
+  function duplicateReferenceReason(ref, lineNos) {
+    return 'Duplicate reference ' + ref + ' on lines ' + lineNos.join(', ') +
+      '. Combine or remove duplicate references, then preview again.';
+  }
+
+  function overlapRowReason(lineNos, rowRef) {
+    const lines = lineNos.slice().sort((a, b) => a - b);
+    const pair = lines.length === 2
+      ? ('Lines ' + lines[0] + ' and ' + lines[1])
+      : ('Lines ' + lines.join(', '));
+    return pair + ' both match the same invoice row (' + rowRef + '). Combine or remove one, then preview again.';
+  }
+
+  /**
+   * Parses the whole textarea. Empty lines are ignored.
+   * The same reference key on more than one line (any format) is DUPLICATE_INPUT on every
+   * appearance — never last-wins, never combined. Duplicate keys block the whole Preview/Apply
+   * (see attachMatchBlocks). Normalization: trim + case-insensitive via normalizeRef.
    */
   function parseInput(text) {
     const entries = [];
@@ -114,16 +133,21 @@
       if (!byKey.has(e.key)) byKey.set(e.key, []);
       byKey.get(e.key).push(e);
     });
+    const blocks = [];
     byKey.forEach(list => {
       if (list.length < 2) return;
-      const lines = list.map(e => e.lineNo).join(', ');
-      list.forEach(e => {
+      const ordered = list.slice().sort((a, b) => a.lineNo - b.lineNo);
+      const lineNos = ordered.map(e => e.lineNo);
+      const displayRef = ordered[0].ref;
+      const reason = duplicateReferenceReason(displayRef, lineNos);
+      ordered.forEach(e => {
         e.status = 'DUPLICATE_INPUT';
-        e.reason = `Reference appears on lines ${lines}`;
+        e.reason = reason;
       });
+      blocks.push({ type: 'DUPLICATE', key: ordered[0].key, ref: displayRef, lineNos: lineNos, message: reason });
     });
 
-    return { entries, valid: entries.filter(e => e.status === 'OK') };
+    return { entries, valid: entries.filter(e => e.status === 'OK'), blocks: blocks };
   }
 
   function fromColumns(cells) {
@@ -138,7 +162,7 @@
 
   /**
    * Rewrites pasted spreadsheet rows into ApplyFast syntax.
-   *   2 columns: REF, payment            -> REF=payment (blank payment -> REF, which is never applied)
+   *   2 columns: REF, payment            -> REF=payment (blank payment -> REF, which applies the full Amt. Due)
    *   3 columns: REF, discount, payment  -> REF|discount|payment
    * Empty tab cells keep their position, so a blank payment is never read as the discount.
    * Single-space rows are split only when every amount token has explicit decimals.
@@ -231,17 +255,26 @@
     else if (!list.includes(rowIndex)) list.push(rowIndex);
   }
 
+  const PIPE_MULTI_REASON = 'Use REF=AMOUNT for multi-row references';
+  const SCAN_CAP_GROUP_REASON = (cap) => 'Matching rows may sit beyond the ' + cap + '-page scan limit; held so a partial group is not applied';
+  const CAP_NOT_REACHED_REASON = 'Matched, no application: reference amount used by rows above';
+  // Unmatched lines that are held (not skipped): shown Held in Preview and in the Results after Apply.
+  const HELD_LINE_STATUSES = Object.freeze(['CROSS_PAGE_GROUP', 'SCAN_CAP_GROUP', 'PIPE_MULTI_ROW']);
+  const SKIPPED_NO_DUE_REASON = 'Skipped: no positive amount due';
+
   /**
    * Classifies parsed entries against an in-memory row snapshot.
    * rows: [{ ref, po, type?, otherCells?: string[] }]
    * Priority: exact Ref No. > exact PO > exact whole token in other cells > partial.
    * Partial matches need MIN_PARTIAL_LENGTH characters and are flagged, never auto-selected.
-   * Multiple rows are only allowed for a bare REF line (no amount) whose exact match hits rows
-   * that are all a known non-Invoice type; the rows are shown in Review but, having no amount,
-   * are never applied. Lines with an explicit payment or discount always need a unique row.
+   * Multi-row MATCHED when: PO or other-column (token) match, or a non-Invoice type group.
+   * Exact Invoice Ref No. matching several rows stays MULTIPLE_MATCH; partial stays single-row.
+   * Overlap: two different input lines that resolve to the same NetSuite row are OVERLAP and
+   * block the whole Preview/Apply (no combining). Overlap is evaluated only among the rows
+   * passed in — All pages passes every scanned page; This page only passes the loaded page.
    * Returns one result per entry: { entry, status, matchType, candidates, multiRow, reason }.
    */
-  function matchEntries(entries, rows) {
+  function matchEntries(entries, rows, opts) {
     const refIndex = new Map();
     const poIndex = new Map();
     const tokenIndex = new Map();
@@ -278,11 +311,17 @@
       if (candidates.length === 0) return { entry, status: 'NOT_FOUND', matchType: null, candidates, multiRow: false, reason: 'Not found in the loaded rows' };
       if (candidates.length > 1) {
         const bareRef = entry.format === 'ref';
-        if (bareRef && matchType !== 'partial' && candidates.every(i => isNonInvoiceType(rows[i].type))) {
-          return { entry, status: 'MATCHED', matchType, candidates, multiRow: true, reason: `Matches ${candidates.length} non-Invoice rows` };
+        const nonInvoiceGroup = matchType !== 'partial' && candidates.every(i => isNonInvoiceType(rows[i].type));
+        // PO/token multi-row (any type), or non-Invoice groups. Never exact Ref No. multi; never partial multi.
+        const allowPoToken = (matchType === 'po' || matchType === 'token');
+        const allowNonInv = nonInvoiceGroup;
+        if (allowPoToken || allowNonInv) {
+          const label = allowPoToken && !nonInvoiceGroup ? 'rows' : 'non-Invoice rows';
+          return { entry, status: 'MATCHED', matchType, candidates, multiRow: true, reason: 'Matches ' + candidates.length + ' ' + label };
         }
-        let reason = `Matches ${candidates.length} rows`;
-        if (!bareRef) reason += '; a line with an amount must match exactly one row';
+        let reason = 'Matches ' + candidates.length + ' rows';
+        if (!bareRef && matchType === 'ref') reason += '; an exact Ref No. must match exactly one row';
+        else if (!bareRef) reason += '; a line with an amount must match exactly one row';
         else if (matchType === 'partial') reason += '; use the exact reference';
         else reason += '; Invoice rows need a unique reference';
         return { entry, status: 'MULTIPLE_MATCH', matchType, candidates, multiRow: false, reason };
@@ -297,6 +336,9 @@
       };
     });
 
+    // Overlap detector: only among `rows` supplied to this call (All pages = union of scanned
+    // pages; This page = the loaded page only). Two paste lines claiming the same NetSuite row
+    // block the whole Preview/Apply — nothing is combined.
     const byRow = new Map();
     results.forEach(r => {
       if (r.status !== 'MATCHED' && r.status !== 'PARTIAL_REF_MATCH') return;
@@ -305,16 +347,45 @@
         byRow.get(row).push(r);
       });
     });
-    byRow.forEach(list => {
+    const overlapBlocks = [];
+    byRow.forEach((list, rowIndex) => {
       if (list.length < 2) return;
-      const lines = list.map(r => r.entry.lineNo).join(', ');
+      const lineNos = list.map(r => r.entry.lineNo);
+      const rowRef = rows[rowIndex] && rows[rowIndex].ref ? rows[rowIndex].ref : 'row';
+      const reason = overlapRowReason(lineNos, rowRef);
       list.forEach(r => {
-        r.status = 'DUPLICATE_INPUT';
-        r.reason = `Lines ${lines} point to the same row`;
+        r.status = 'OVERLAP';
+        r.reason = reason;
       });
+      overlapBlocks.push({ type: 'OVERLAP', rowIndex: rowIndex, ref: rowRef, lineNos: lineNos.slice().sort((a, b) => a - b), message: reason });
     });
+    results._overlapBlocks = overlapBlocks;
 
     return results;
+  }
+
+  /**
+   * Attach duplicate + overlap blocks to a match object. When blocked is true, Preview shows the
+   * banner messages and Apply writes nothing until the paste changes.
+   */
+  function attachMatchBlocks(match, parseBlocks, overlapBlocks) {
+    const derived = [];
+    (match.results || []).forEach(r => {
+      if (r && r.status === 'OVERLAP' && r.reason && !derived.some(b => b.message === r.reason)) {
+        const lineNos = (match.results || []).filter(x => x.status === 'OVERLAP' && x.reason === r.reason).map(x => x.entry.lineNo);
+        derived.push({
+          type: 'OVERLAP',
+          ref: (r.reason.match(/\(([^)]+)\)\./) || [])[1] || '',
+          lineNos: Array.from(new Set(lineNos)).sort((a, b) => a - b),
+          message: r.reason
+        });
+      }
+    });
+    const blocks = [].concat(parseBlocks || [], overlapBlocks && overlapBlocks.length ? overlapBlocks : derived);
+    match.blocks = blocks;
+    match.blocked = blocks.length > 0;
+    match.blockMessages = blocks.map(b => b.message);
+    return match;
   }
 
   /* ---------- Read-only invoice details ---------- */
@@ -418,8 +489,9 @@
    */
   function decideGroup(items) {
     const approved = items.map(it => it.status === 'READY' || (!!it.overwritable && !!it.overwrite));
-    if (items.length === 1) return { approved, blockedReason: approved[0] ? '' : items[0].reason };
-    const failing = items.findIndex((it, i) => !approved[i] && it.status !== 'ALREADY_APPLIED');
+    const ignorable = it => it.status === 'ALREADY_APPLIED' || it.status === 'CAP_NOT_REACHED' || it.status === 'SKIPPED_NO_DUE';
+    if (items.length === 1) return { approved, blockedReason: approved[0] || ignorable(items[0]) ? '' : items[0].reason };
+    const failing = items.findIndex((it, i) => !approved[i] && !ignorable(it));
     if (failing < 0) return { approved, blockedReason: '' };
     return {
       approved: approved.map(() => false),
@@ -443,6 +515,28 @@
     if (!(start >= 1 && end >= start && total >= end)) return null;
     return { start, end, total };
   }
+
+  /**
+   * True when NetSuite's Invoices range text describes more than one page of open
+   * transactions (same signal All pages uses to know further pages exist).
+   * Accepts a range object from parseRange or the range text string.
+   */
+  function listHasMultiplePages(rangeOrText) {
+    const range = (rangeOrText && typeof rangeOrText === 'object' && 'total' in rangeOrText)
+      ? rangeOrText
+      : parseRange(rangeOrText);
+    if (!range) return false;
+    return range.total > (range.end - range.start + 1);
+  }
+
+  // This page only Preview warning when a multi-row match may continue past the loaded page.
+  // Warning only — the matched rows on this page are still planned (not held).
+  const THIS_PAGE_GROUP_WARN = 'This page only: this group may continue on other pages. Use All pages to cover the whole group.';
+
+  function thisPageGroupWarning(multiRow, rangeOrText) {
+    return multiRow && listHasMultiplePages(rangeOrText) ? THIS_PAGE_GROUP_WARN : '';
+  }
+
 
   /**
    * Checks that the loaded rows are the rows the range text describes.
@@ -589,7 +683,9 @@
    * non-Invoice multiple-match rules and "not found" are decided across all pages.
    * Requires a complete scan. Each result gains locations: [{ pageStart, rangeText, rowIndex, lineIndex }].
    */
-  function matchAcrossPages(entries, scan) {
+  function matchAcrossPages(entries, scan, opts) {
+    // Overlap detection (All pages): runs across every scanned page in the complete scan.
+    // Two paste lines that resolve to the same NetSuite row anywhere in the scan block the whole run.
     const coverage = scanCoverage(scan);
     if (!coverage.complete) {
       const why = coverage.stale.length ? `${coverage.stale.length} page(s) need scanning again`
@@ -605,13 +701,16 @@
       });
     });
     const pageCount = scan.pages.size;
-    const results = matchEntries(entries, rows).map(r => {
+    // Overlap covers every scanned page (union of scan.pages). Duplicate keys are attached by the caller via parse blocks.
+    const matched = matchEntries(entries, rows, opts);
+    const overlapBlocks = matched._overlapBlocks || [];
+    const results = matched.map(r => {
       const locations = r.candidates.map(c => where[c]);
       const out = Object.assign({}, r, { locations, pageStarts: Array.from(new Set(locations.map(l => l.pageStart))) });
       if (r.status === 'NOT_FOUND') out.reason = `Not found on any of the ${pageCount} scanned page(s)`;
       return out;
     });
-    return { ok: true, coverage, rows, results };
+    return attachMatchBlocks({ ok: true, coverage, rows, results }, [], overlapBlocks);
   }
 
   /**
@@ -623,7 +722,9 @@
    * its position on the page (range start - 1 + index) so every plan item points at exactly one row.
    * Returns { scan, match }; page is not modified.
    */
-  function matchLoadedPage(entries, page) {
+  function matchLoadedPage(entries, page, opts) {
+    // Overlap detection (This page): covers only rows on the current loaded page (only those are scanned).
+    // Lines that would overlap a row on another page are out of scope until that page is loaded or All pages is used.
     const src = page || {};
     const loaded = src.rows || [];
     const range = parseRange(src.rangeText) || { start: 1, end: Math.max(loaded.length, 1), total: null };
@@ -631,7 +732,10 @@
     const record = makePageRecord({ customerId: src.customerId, rangeText: src.rangeText || '', rows }, range);
     const scan = { customerId: record.customerId, total: range.total, pages: new Map([[range.start, record]]) };
     const where = rows.map((row, i) => ({ pageStart: range.start, rangeText: record.rangeText, rowIndex: i, lineIndex: row.lineIndex }));
-    const results = matchEntries(entries, rows).map(r => {
+    // Overlap covers only rows on the current (loaded) page — the only rows This page mode scans.
+    const matched = matchEntries(entries, rows, opts);
+    const overlapBlocks = matched._overlapBlocks || [];
+    const results = matched.map(r => {
       const locations = r.candidates.map(c => where[c]);
       const out = Object.assign({}, r, { locations, pageStarts: locations.length ? [range.start] : [] });
       if (r.status === 'NOT_FOUND') out.reason = 'Not found in the loaded Invoices rows';
@@ -639,28 +743,42 @@
     });
     const coverage = { total: range.total, scannedRows: rows.length, complete: true, missing: [], stale: [],
       pages: [{ rangeText: record.rangeText, start: range.start, end: range.end, rows: rows.length, stale: '' }] };
-    return { scan, match: { ok: true, coverage, rows, results } };
+    return { scan, match: attachMatchBlocks({ ok: true, coverage, rows, results }, [], overlapBlocks) };
   }
 
   /**
    * Groups matched lines by page for per-page Apply. Only MATCHED lines are planned; partial
-   * matches, multiple matches, duplicates and invalid lines are listed in skipped.
-   * A multi-row line whose rows sit on different pages cannot be applied all-or-nothing
-   * (Apply works one page at a time), so it is held unless opts.allowCrossPageGroups is set.
+   * matches, multiple matches, duplicates, overlaps and invalid lines are listed in skipped.
+   * Cross-page multi-row groups are allowed. Discount-format (pipe) multi-row lines are held
+   * (PIPE_MULTI_ROW). When opts.scanCapped is set, multi-row groups that may extend past the
+   * scan page cap are held (SCAN_CAP_GROUP).
+   * When match.blocked (duplicate keys or row overlaps), nothing is planned — every line is
+   * skipped so Preview shows no applyable rows and Apply stays disabled until the paste changes.
    * Items keep the Ref No. (identity) and the NetSuite row number (consistency check).
    */
   function buildPagePlan(match, opts) {
-    const allowCrossPage = !!(opts && opts.allowCrossPageGroups);
+    const scanCapped = !!(opts && opts.scanCapped);
+    const scanCap = (opts && opts.scanCap > 0) ? opts.scanCap : 20;
     const byPage = new Map();
     const held = [];
     const skipped = [];
+    if (match && match.blocked) {
+      (match.results || []).forEach(r => {
+        const entry = r.entry;
+        skipped.push({ lineNo: entry.lineNo, raw: entry.raw, status: r.status === 'OK' || r.status === 'MATCHED' ? 'BLOCKED_RUN' : r.status,
+          reason: (match.blockMessages && match.blockMessages[0]) || r.reason || 'Fix duplicate or overlapping references, then preview again.' });
+      });
+      return { pages: [], held, skipped, rowCount: 0, blocked: true, blockMessages: match.blockMessages || [] };
+    }
     match.results.forEach(r => {
       const entry = r.entry;
       if (r.status !== 'MATCHED') { skipped.push({ lineNo: entry.lineNo, raw: entry.raw, status: r.status, reason: r.reason }); return; }
-      if (r.multiRow && r.pageStarts.length > 1 && !allowCrossPage) {
-        const pages = r.pageStarts.map(s => match.coverage.pages.find(p => p.start === s).rangeText).join('; ');
-        held.push({ lineNo: entry.lineNo, raw: entry.raw, status: 'CROSS_PAGE_GROUP',
-          reason: `Its ${r.candidates.length} rows are on different pages (${pages}); per-page Apply cannot apply them all-or-nothing` });
+      if (entry.format === 'discount' && r.multiRow) {
+        held.push({ lineNo: entry.lineNo, raw: entry.raw, status: 'PIPE_MULTI_ROW', reason: PIPE_MULTI_REASON });
+        return;
+      }
+      if (r.multiRow && scanCapped) {
+        held.push({ lineNo: entry.lineNo, raw: entry.raw, status: 'SCAN_CAP_GROUP', reason: SCAN_CAP_GROUP_REASON(scanCap) });
         return;
       }
       r.locations.forEach((loc, k) => {
@@ -668,7 +786,7 @@
         const row = match.rows[r.candidates[k]];
         byPage.get(loc.pageStart).items.push({
           lineNo: entry.lineNo, entry, ref: row.ref, refKey: normalizeRef(row.ref), lineIndex: loc.lineIndex,
-          rowIndex: loc.rowIndex, multiRow: r.multiRow, groupSize: r.candidates.length
+          rowIndex: loc.rowIndex, multiRow: r.multiRow, groupSize: r.candidates.length, matchType: r.matchType || null
         });
       });
     });
@@ -677,6 +795,7 @@
   }
 
   /**
+   * Checks a fresh, settled reading of a page against its scan before anything is applied there.  /**
    * Checks a fresh, settled reading of a page against its scan before anything is applied there.
    * current: { customerId, rangeText, rows } read the same way as for addPage.
    * Returns { fresh, reasons: [{ code, reason }] }. Codes add NOT_SCANNED, STALE and UNSETTLED.
@@ -829,41 +948,159 @@
 
   const NO_AMOUNT_REASON = 'No amount — use REF=AMOUNT';
 
-  // The Payment and Discount a line asks for on a row. Only an explicit amount (REF=AMOUNT or
-  // REF|discount|payment) is ever planned: a bare REF is matched for Review but never takes an amount
-  // from Amt. Due, Payment Received or any other balance.
-  function plannedAmounts(entry) {
+  // The Payment and Discount a line asks for on a row.
+  // Bare REF uses the row's full Amt. Due. REF=AMOUNT is a group running cap allotted later.
+  // Single-row amount/discount lines keep the typed amounts (overpayment status preserved for Excel).
+  function plannedAmounts(entry, row, opts) {
     const discount = (typeof entry.discount === 'number' && entry.discount > 0) ? entry.discount : null;
     const payment = entry.payment === null || entry.payment === undefined ? null : entry.payment;
-    return { payment, discount: payment === null ? null : discount, reason: payment === null ? NO_AMOUNT_REASON : '' };
+    if (payment !== null) return { payment, discount, reason: '' };
+    if (!row || row.amtDue === null || row.amtDue === undefined) {
+      const txt = row && row.amtDueText != null ? row.amtDueText : '';
+      return { payment: null, discount: null, reason: 'Amt. Due "' + txt + '" could not be read; enter an amount (REF=0.00)' };
+    }
+    // Amt. Due <= 0 is skipped. The row reader rejects negative Amt. Due text (parseAmountStrict), so a negative
+    // row arrives with amtDue null and is unplannable above; in practice only a 0.00 row reaches this skip.
+    if (row.amtDue <= 0) return { payment: null, discount: null, reason: SKIPPED_NO_DUE_REASON, skip: true };
+    return { payment: row.amtDue, discount: null, reason: '' };
+  }
+
+  function skipsCapConsumption(state) {
+    if (!state) return true;
+    if (state.status === 'ALREADY_APPLIED' || state.status === 'CAP_NOT_REACHED' || state.status === 'SKIPPED_NO_DUE') return true;
+    if (state.status === 'UNPLANNABLE' || state.status === 'INCONSISTENT' || state.status === 'UNREADABLE') return true;
+    if (state.status === 'HAS_DISCOUNT' && !state.overwritable) return true;
+    return false;
+  }
+
+  // True when the row already holds a full Amt. Due application (checked + payment == due).
+  // Used before REF=AMOUNT allotment so protected ticks do not consume the group's cap.
+  function isAlreadyFullyApplied(it) {
+    if (!it || !it.before || !it.before.checked) return false;
+    if (typeof it.amtDue !== 'number' || !(it.amtDue > 0)) return false;
+    return classifyRowState(it.before, { payment: it.amtDue, discount: null }).status === 'ALREADY_APPLIED';
+  }
+
+  function groupCapLeftover(items) {
+    let max = 0;
+    (items || []).forEach(it => { if (typeof it.capLeftover === 'number' && it.capLeftover > max) max = it.capLeftover; });
+    return max;
+  }
+
+  /**
+   * Allot a REF=AMOUNT cap across a group's items in ascending pageStart then lineIndex.
+   * Already-applied and zero-due (Amt. Due <= 0; in practice 0.00) rows do not consume the cap.
+   */
+  function allotGroupCaps(items, opts) {
+    if (!items.length) return { items: items, capLeftover: 0 };
+    const byLine = new Map();
+    items.forEach((it, idx) => {
+      if (!byLine.has(it.lineNo)) byLine.set(it.lineNo, []);
+      byLine.get(it.lineNo).push(idx);
+    });
+    let totalLeftoverC = 0;
+    const out = items.map(it => Object.assign({}, it));
+    byLine.forEach(idxs => {
+      const sample = out[idxs[0]];
+      const cap = sample.requestedCap;
+      if (cap === null || cap === undefined) return;
+      // Single-row REF=AMOUNT keeps the requested payment (v1.6 overpayment). Cap allotment is multi-row only.
+      if (idxs.length === 1) return;
+      const ordered = idxs.slice().sort((a, b) => (out[a].pageStart - out[b].pageStart) || (out[a].lineIndex - out[b].lineIndex));
+      let left = cents(cap);
+      ordered.forEach(idx => {
+        const copy = out[idx];
+        const dueC = copy.amtDue === null || copy.amtDue === undefined ? null : cents(copy.amtDue);
+        // D3: Amt. Due <= 0 - skip with info; do not consume cap or block the group. Negative Amt. Due text is
+        // rejected by the row reader (amtDue null), so such a row is UNPLANNABLE below and holds the whole line;
+        // in practice only a 0.00 row reaches this skip.
+        if (dueC !== null && dueC <= 0) {
+          copy.payment = null;
+          copy.discount = null;
+          copy.state = { status: 'SKIPPED_NO_DUE', overwritable: false, reason: SKIPPED_NO_DUE_REASON };
+          copy.infoNote = copy.infoNote ? (copy.infoNote + '; ' + SKIPPED_NO_DUE_REASON) : SKIPPED_NO_DUE_REASON;
+          copy.note = SKIPPED_NO_DUE_REASON;
+          return;
+        }
+        // D4: already fully applied/ticked — exclude before allotment so they do not consume the cap.
+        if (isAlreadyFullyApplied(copy) || (copy.state && copy.state.status === 'ALREADY_APPLIED')) {
+          copy.state = { status: 'ALREADY_APPLIED', overwritable: false, reason: 'Already holds these values' };
+          copy.payment = copy.amtDue;
+          copy.note = copy.state.reason;
+          return;
+        }
+        if (skipsCapConsumption(copy.state)) return;
+        if (dueC === null) {
+          copy.payment = null;
+          copy.state = { status: 'UNPLANNABLE', overwritable: false, reason: copy.amtDueText ? ('Amt. Due "' + copy.amtDueText + '" could not be read') : 'Amt. Due could not be read' };
+          copy.note = copy.state.reason;
+          return;
+        }
+        const take = Math.min(left, dueC);
+        if (take <= 0) {
+          // D1: cap exhausted — info skip; must not cancel the group via decideGroup.
+          copy.payment = null;
+          copy.state = { status: 'CAP_NOT_REACHED', overwritable: false, reason: CAP_NOT_REACHED_REASON };
+          copy.infoNote = copy.infoNote ? (copy.infoNote + '; ' + CAP_NOT_REACHED_REASON) : CAP_NOT_REACHED_REASON;
+          copy.note = CAP_NOT_REACHED_REASON;
+          copy.capExhausted = true;
+          return;
+        }
+        copy.payment = dollars(take);
+        copy.capLimited = take < dueC;
+        copy.state = classifyRowState(copy.before, { payment: copy.payment, discount: copy.discount });
+        left -= take;
+      });
+      if (left > 0) {
+        totalLeftoverC += left;
+        const first = out[ordered[0]];
+        first.capLeftover = dollars(left);
+        const tip = 'Unapplied cap leftover ' + formatUS(dollars(left));
+        first.note = first.note ? (first.note + '; ' + tip) : tip;
+      }
+    });
+    return { items: out, capLeftover: dollars(totalLeftoverC) };
   }
 
   /**
    * One plan item per planned row of a page plan, with everything Apply needs to recognise the row
    * again: page, NetSuite row number, Ref No., internal id, a details fingerprint and the Apply /
    * Payment / Disc. Taken values the Preview showed. Decisions follow the single-page rules.
+   * Bare REF uses Amt. Due; REF=AMOUNT group caps are allotted across the group.
    */
-  function buildMultiApplyPlan(pagePlan, scan) {
+  function buildMultiApplyPlan(pagePlan, scan, opts) {
     const items = [];
     pagePlan.pages.forEach(page => {
       const record = scan.pages.get(page.pageStart);
       page.items.forEach(pi => {
         const row = record.rows[pi.rowIndex];
-        const amounts = plannedAmounts(pi.entry, row);
+        const amounts = plannedAmounts(pi.entry, row, opts);
         const before = { checked: !!row.checked, payment: row.payment || '', discount: row.discount || '' };
-        const state = amounts.reason
-          ? { status: 'UNPLANNABLE', overwritable: false, reason: amounts.reason }
-          : classifyRowState(before, { payment: amounts.payment, discount: amounts.discount });
+        const state = amounts.skip
+          ? { status: 'SKIPPED_NO_DUE', overwritable: false, reason: amounts.reason }
+          : amounts.reason
+            ? { status: 'UNPLANNABLE', overwritable: false, reason: amounts.reason }
+            : classifyRowState(before, { payment: amounts.payment, discount: amounts.discount });
+        const requestedCap = (pi.entry.format === 'payment' && typeof pi.entry.payment === 'number') ? pi.entry.payment : null;
+        const infoBits = [];
+        if (amounts.skip) infoBits.push(amounts.reason);
         items.push({
           id: items.length, lineNo: pi.lineNo, raw: pi.entry.raw, pageStart: page.pageStart, rangeText: page.rangeText,
           lineIndex: pi.lineIndex, ref: row.ref, refKey: pi.refKey, internalId: row.internalId || '', type: row.type || '',
-          amtDueText: row.amtDueText || '', detail: rowDetail(row), multiRow: pi.multiRow, groupSize: pi.groupSize,
-          payment: amounts.payment, discount: amounts.discount, before, state, overwrite: false, willWrite: false, note: ''
+          amtDue: row.amtDue === undefined ? null : row.amtDue, amtDueText: row.amtDueText || '', detail: rowDetail(row),
+          multiRow: pi.multiRow, groupSize: pi.groupSize, matchType: pi.matchType || null,
+          payment: amounts.payment, discount: amounts.discount, requestedCap,
+          before, state, overwrite: false, willWrite: false, note: amounts.skip ? amounts.reason : '',
+          infoNote: infoBits.join('; '),
+          capLeftover: 0, capLimited: false, capExhausted: false
         });
       });
     });
-    decideMultiWrites(items);
-    return items;
+    const allotted = allotGroupCaps(items, opts);
+    decideMultiWrites(allotted.items);
+    let leftover = allotted.capLeftover || 0;
+    if (leftover > 0 && allotted.items[0]) allotted.items[0].capLeftover = leftover;
+    return allotted.items;
   }
 
   // Sets willWrite / note on every item, one input line at a time (decideGroup).
@@ -877,7 +1114,26 @@
       const decision = decideGroup(list.map(it => ({ status: it.state.status, overwritable: it.state.overwritable, overwrite: it.overwrite, reason: it.state.reason })));
       list.forEach((it, i) => {
         it.willWrite = decision.approved[i];
-        it.note = it.willWrite ? '' : it.state.status === 'ALREADY_APPLIED' ? it.state.reason : (decision.blockedReason || it.state.reason);
+        const leftoverNote = (typeof it.capLeftover === 'number' && it.capLeftover > 0)
+          ? ('Unapplied cap leftover ' + formatUS(it.capLeftover)) : '';
+        const infoSkip = it.state.status === 'CAP_NOT_REACHED' || it.state.status === 'SKIPPED_NO_DUE';
+        // Display only: every readable row of a multi-row line that decideGroup held (one row cannot be written),
+        // including a row the cap did not reach; a zero-due row keeps its skip.
+        it.lineHeld = list.length > 1 && !!decision.blockedReason && !it.willWrite && it.state.status !== 'ALREADY_APPLIED' && it.state.status !== 'SKIPPED_NO_DUE';
+        if (it.willWrite) {
+          it.note = leftoverNote;
+        } else if (it.lineHeld && it.state.status === 'CAP_NOT_REACHED') {
+          // Held takes precedence: nothing on the line is applied, so no row above used the reference amount.
+          it.note = decision.blockedReason;
+          it.infoNote = (it.infoNote || '').split('; ').filter(bit => bit && bit !== CAP_NOT_REACHED_REASON).join('; ');
+        } else if (it.state.status === 'ALREADY_APPLIED' || infoSkip) {
+          it.note = it.state.reason;
+          if (infoSkip && it.state.reason && !(it.infoNote || '').includes(it.state.reason)) {
+            it.infoNote = it.infoNote ? (it.infoNote + '; ' + it.state.reason) : it.state.reason;
+          }
+        } else {
+          it.note = decision.blockedReason || it.state.reason;
+        }
       });
     });
     return items;
@@ -1062,7 +1318,7 @@
    *   { id, lineNo, raw, page, lineIndex, invoice, type, date, originalAmount, invoiceAmountRemaining,
    *     discountAvailable, requestedAmount, discountTaken,
    *     write: { willWrite, safetyStatus, overwrite, note } }
-   *   requestedAmount is the amount the line asks for (REF=AMOUNT); null for a bare REF, which is never applied.
+   *   requestedAmount is the amount the line asks for (REF=AMOUNT); null for a bare REF, which applies the full Amt. Due.
    * input.unmatched           input lines that matched no row: { lineNo, raw, invoice, amount, discount, safetyStatus, reason }
    *
    * Cash is allotted to the rows that end up applied (written now, or already holding the planned
@@ -1268,8 +1524,8 @@
 
   /* ---------- Payment Received ---------- */
   // Payment Received is ApplyFast's own field for the cash actually received from the customer, and the
-  // single source of the cash amount. It is required: without a valid amount Apply is blocked. Apply
-  // enters it as NetSuite's Payment Amount; it is never read from NetSuite.
+  // single source of the cash amount. It is optional; an invalid amount blocks Review. Apply enters it
+  // as NetSuite's Payment Amount; it is never read from NetSuite.
 
   /**
    * Payment Received text -> { status: 'EMPTY' | 'VALID' | 'INVALID', value, reason, actualCashReceived }.
@@ -1316,8 +1572,8 @@
    * The final write plan of a Preview (either mode), limited by Payment Received.
    * input: { match, plan, items, scan, invalid, actualCashReceived } as for multiPlanAnalysisInput.
    * Returns { cashInputStatus, applyBlocked, blockedReason, items, analysis }:
-   *   NOT_PROVIDED  Apply is blocked until Payment Received is entered (it is required); items are
-   *                 unchanged copies.
+   *   NOT_PROVIDED  Payment Received was empty (optional); Apply is not blocked; items are
+   *                 unchanged copies; paymentAmountAuto is the sum of planned applied amounts.
    *   INVALID       Apply is blocked until Payment Received is corrected; items are unchanged copies.
    *   OK            every item that will be written carries analysis.applicationAmount as its payment
    *                 (requested, balance less discount and remaining cash, in plan order), with the plan's
@@ -1336,11 +1592,20 @@
       const masked = items.map(it => (it.willWrite && held.has(it.lineNo) ? Object.assign(copy(it), { willWrite: false, cashHeld: true, note: held.get(it.lineNo) }) : it));
       const analysis = analyzeApplication(multiPlanAnalysisInput(Object.assign({}, src, { items: masked })));
       const status = analysis.summary.cashInputStatus;
-      if (status !== 'OK') {
+      if (status === 'INVALID') {
         return {
           cashInputStatus: status, applyBlocked: true,
-          blockedReason: status === 'INVALID' ? 'Correct Payment Received before applying' : 'Enter Payment Received before applying',
+          blockedReason: 'Correct Payment Received before applying',
           items: items.map(copy), analysis
+        };
+      }
+      if (status === 'NOT_PROVIDED') {
+        // Payment Received is optional: Apply is not blocked; R&R keeps NOT_PROVIDED.
+        // Callers fill NetSuite Payment Amount with the sum of planned applied amounts.
+        return {
+          cashInputStatus: status, applyBlocked: false, blockedReason: '',
+          items: items.map(copy), analysis,
+          paymentAmountAuto: items.filter(it => it.willWrite).reduce((sum, it) => sum + (typeof it.payment === 'number' ? it.payment : 0), 0)
         };
       }
       const byId = new Map(analysis.rows.map(r => [r.id, r]));
@@ -1385,6 +1650,7 @@
    *   OVERPAYMENT                              - unappliedAmount (cash beyond the balance, left unapplied)
    *   PARTIAL_APPLICATION / SHORT_PAYMENT      + remainingInvoiceBalance (balance left open)
    *   UNMATCHED                                - the line's amount (unidentified cash); null without one
+   *   NOT_APPLIED, Cap used row (isCapUsedRow) + remainingInvoiceBalance (the whole Amt. Due stays open)
    *   NOT_APPLIED / NEEDS_REVIEW               null: nothing was applied, so there is no difference to
    *                                            report; the row is listed as a review finding instead.
    */
@@ -1394,8 +1660,15 @@
     if (r.reconStatus === RECON_STATUS.OVERPAYMENT) return neg(r.unappliedAmount);
     if (isPartialShort(r)) return r.remainingInvoiceBalance;
     if (r.reconStatus === RECON_STATUS.UNMATCHED) return neg(r.requestedAmount);
+    if (isCapUsedRow(r)) return r.remainingInvoiceBalance;
     return null;
   }
+
+  // A Cap used result row: matched on a REF=amount or PO line that is applied, but allotted nothing because the rows
+  // above used the amount (CAP_NOT_REACHED on a line that is not held). The report and the Review show it as an open
+  // invoice: 0.00 paid and applied, the whole Amt. Due remaining and as the Difference. Writes are unchanged.
+  const isCapUsedRow = r => r.rowType === 'INVOICE' && !!r.write && r.write.safetyStatus === 'CAP_NOT_REACHED' && !r.write.lineHeld &&
+    r.invoiceAmountRemaining !== null && r.invoiceAmountRemaining !== undefined;
 
   /**
    * Report figures over the result rows, all taken from reportDifference and the row amounts:
@@ -1410,7 +1683,7 @@
       exceptions: {
         overpayment: diff(by(RECON_STATUS.OVERPAYMENT)),
         unmatched: diff(by(RECON_STATUS.UNMATCHED)),
-        partialShort: diff(rows.filter(isPartialShort)),
+        partialShort: diff(rows.filter(r => isPartialShort(r) || isCapUsedRow(r))),
         total: diff(rows)
       },
       reviewFindings: rows.filter(r => r.rowType === 'INVOICE' && (r.needsReview || r.reconStatus === RECON_STATUS.NOT_APPLIED || r.reconStatus === RECON_STATUS.NEEDS_REVIEW)).length,
@@ -1455,6 +1728,7 @@
    *   rows[].remittance       { gross, discount, payment } of the input line (remittanceAmounts)
    *   rows[].appliedDiscount  the discount of the NetSuite application; null when nothing is applied
    *   rows[].reportDifference the report's Difference (reportDifference); invoiceDifference is unchanged
+   *                           (a Cap used row, isCapUsedRow, shows 0.00 paid and applied and its Amt. Due open)
    *   summary.report          reportSummary(rows): exception figures and column totals for the report
    * Amounts and statuses are analyzeApplication's, so applicationAmount of a written row equals the
    * Payment Apply writes. filterCounts holds the number of rows each RESULT_FILTERS entry shows.
@@ -1471,9 +1745,16 @@
         write: {
           willWrite: !!it.willWrite, safetyStatus: state.status || r.safetyStatus, overwrite: !!it.overwrite,
           overwritable: !!state.overwritable, note: it.note || '', cashLimited: !!it.cashLimited, cashHeld: !!it.cashHeld,
-          payment: it.willWrite ? it.payment : null, discount: it.willWrite ? (it.discount || null) : null
+          lineHeld: !!it.lineHeld, payment: it.willWrite ? it.payment : null, discount: it.willWrite ? (it.discount || null) : null
         }
       });
+      if (isCapUsedRow(row)) {
+        // Report and Review figures only: nothing paid or applied, so the whole Amt. Due stays open.
+        Object.assign(row, {
+          requestedAmount: 0, discountTaken: 0, applicationAmount: 0, remainingInvoiceBalance: row.invoiceAmountRemaining,
+          invoiceDifference: dollars(-cents(row.invoiceAmountRemaining))
+        });
+      }
       row.exception = isReconException(row);
       row.reference = remittanceReference(row.raw);
       row.remittance = remittanceAmounts(row.requestedAmount, row.discountTaken);
@@ -1491,7 +1772,7 @@
         discountStatus: DISCOUNT_STATUS.NONE, needsReview: u.needsReview, remarks: u.remarks, reasons: [u.remarks],
         write: {
           willWrite: false, safetyStatus: u.safetyStatus, overwrite: false, overwritable: false, note: u.remarks,
-          cashLimited: false, cashHeld: false, payment: null, discount: null
+          cashLimited: false, cashHeld: false, lineHeld: false, payment: null, discount: null
         },
         exception: true,
         reference: remittanceReference(u.raw),
@@ -1524,14 +1805,25 @@
   /**
    * Results after Apply: the reconciliation rows with the outcome of each row's write and read-back.
    * items are the applied write-plan items carrying result { status, reason } and actual values.
-   * Unmatched lines were never written: HELD for a line held across pages, SKIPPED otherwise.
+   * Unmatched lines were never written: HELD for a held line (HELD_LINE_STATUSES), SKIPPED otherwise.
    * Result statuses stay separate from reconStatus. Returns { rows, counts }; inputs are not modified.
    */
+  // After Apply, the result status of a row Apply did not write (display only): Already applied, Held for every
+  // readable row of a held line, Cap used, Skipped for a zero-due row, otherwise Blocked by the row's state.
+  function unwrittenResultStatus(it) {
+    const status = it && it.state ? it.state.status : '';
+    if (status === 'ALREADY_APPLIED') return 'ALREADY';
+    if (it.lineHeld) return 'HELD';
+    if (status === 'CAP_NOT_REACHED') return 'CAP_USED';
+    if (status === 'SKIPPED_NO_DUE') return 'SKIPPED';
+    return 'BLOCKED';
+  }
+
   function reconciliationApplyResults(results, items) {
     const byId = new Map((items || []).map(it => [it.id, it]));
     const rows = ((results && results.rows) || []).map(r => {
       if (r.rowType === 'UNMATCHED') {
-        const status = r.safetyStatus === 'CROSS_PAGE_GROUP' ? 'HELD' : 'SKIPPED';
+        const status = HELD_LINE_STATUSES.includes(r.safetyStatus) ? 'HELD' : 'SKIPPED';
         return Object.assign({}, r, { result: { status, reason: r.remarks }, actual: null });
       }
       const it = byId.get(r.id) || {};
@@ -1559,12 +1851,14 @@
   const REPORT_WRITE_LABELS = Object.freeze({
     WILL_WRITE: 'Will apply', NOT_WRITTEN: 'Not written', NEVER_WRITTEN: 'Never written',
     APPLIED: 'Applied', ADJUSTED: 'Adjusted', NOT_CONFIRMED: 'Not confirmed', CHANGED: 'Changed since Preview', MOVED: 'Row moved',
-    HELD: 'Held', BLOCKED: 'Blocked', ALREADY: 'Already applied', SKIPPED: 'Skipped', ERROR: 'Error while writing'
+    HELD: 'Held', CAP_USED: 'Not applied (cap used)', BLOCKED: 'Blocked', ALREADY: 'Already applied', SKIPPED: 'Skipped',
+    ERROR: 'Error while writing'
   });
   // A row that can never be written (unmatched, or matched without an amount) stays NEVER_WRITTEN after Apply too.
   function reportWrite(r) {
     if (r.rowType === 'UNMATCHED' || r.safetyStatus === 'UNPLANNABLE') return 'NEVER_WRITTEN';
     if (r.result) return r.result.status;
+    if (r.safetyStatus === 'CAP_NOT_REACHED' && !(r.write && r.write.lineHeld)) return 'CAP_USED';
     return r.write && r.write.willWrite ? 'WILL_WRITE' : 'NOT_WRITTEN';
   }
   const reportLabel = (labels, key) => (key ? labels[key] || key : null);
@@ -1985,9 +2279,10 @@
 
   const api = {
     parseAmountStrict, isAccountingZero, normalizeRef, parseLine, remittanceReference, parseInput, transformPaste, pasteEdit, matchEntries, MIN_PARTIAL_LENGTH,
+    PIPE_MULTI_REASON, CAP_NOT_REACHED_REASON, SKIPPED_NO_DUE_REASON, HELD_LINE_STATUSES, unwrittenResultStatus, allotGroupCaps, groupCapLeftover, attachMatchBlocks, duplicateReferenceReason, overlapRowReason,
     INFO_COLUMNS, infoColumns, infoValues,
     classifyRowState, sameRowState, pageSignature, decideGroup,
-    SETTLE_QUIET_MS, parseRange, pageAgreement, settleStep, createScan, addPage, scanCoverage,
+    SETTLE_QUIET_MS, parseRange, listHasMultiplePages, THIS_PAGE_GROUP_WARN, thisPageGroupWarning, pageAgreement, settleStep, createScan, addPage, scanCoverage,
     matchAcrossPages, matchLoadedPage, buildPagePlan, checkPageFresh, locatePlanItems, scanPageList,
     AUTO_SCAN_PAGE_CAP, AUTO_NAV_TIMEOUT_MS, planAutoScan, autoNavStatus, verifyAutoPage,
     NO_AMOUNT_REASON, plannedAmounts, buildMultiApplyPlan, decideMultiWrites, orderApplyPages, rowChangeSincePreview,

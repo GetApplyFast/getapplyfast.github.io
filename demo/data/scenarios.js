@@ -72,7 +72,7 @@
       story: 'B',
       title: 'Exceptions and Review & Reconciliation',
       card: 'Ordinary applications and exceptions together, then the reconciliation report.',
-      intro: 'This remittance was already reviewed. It mixes ordinary applications, including invoices settled with a discount, with exceptions: a partial payment, an overpayment, a discount larger than the discount available, an unmatched invoice, a duplicate, a similar invoice number, a partial reference, and an amount that cannot be read.',
+      intro: 'This remittance was already reviewed. It mixes ordinary applications, including invoices settled with a discount, with exceptions: a partial payment, an overpayment, a discount larger than the discount available, an unmatched invoice, a similar invoice number, a partial reference, and an amount that cannot be read.',
       introMore: 'Apply the cash anyway. ApplyFast writes the lines it can match and leaves the rest for Review & Reconciliation to classify. Nothing here is for you to correct, and multi-page scan stays free.',
       takeaway: 'The cash is applied. Review & Reconciliation is where the exceptions are classified, and the reconciliation report is what you hand off.',
       // Payment Received is the remittance payment total, including lines Apply cannot write.
@@ -90,7 +90,6 @@
         discountReview(14),
         full(40),
         miswritten('INV-99999', 3, { paid: 180 }),
-        full(11),
         full(11),
         miswritten(digits(1), 1),
         miswritten(digits(3), 3),
